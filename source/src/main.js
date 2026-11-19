@@ -80,6 +80,7 @@ const A = (shaderLocation, offset, format) => ({ shaderLocation, offset, format 
 const vbSolid = { arrayStride: 16, attributes: [A(0, 0, 'float32x3'), A(1, 12, 'snorm8x4')] };
 const ibSolid = { arrayStride: 48, stepMode: 'instance', attributes: [A(2, 0, 'float32x4'), A(3, 16, 'float32x4'), A(4, 32, 'float32x4')] };
 const ibLeaf = { arrayStride: 36, stepMode: 'instance', attributes: [A(0, 0, 'float32x4'), A(1, 16, 'float32x4'), A(2, 32, 'unorm8x4')] };
+const ibFishL = { arrayStride: 48, stepMode: 'instance', attributes: [A(2, 0, 'float32x4'), A(3, 16, 'float32x4'), A(4, 32, 'float32x4')] };
 const ibAnim = { arrayStride: 32, stepMode: 'instance', attributes: [A(2, 0, 'float32x4'), A(3, 16, 'float32x4')] };
 const ibBub = { arrayStride: 32, stepMode: 'instance', attributes: [A(0, 0, 'float32x4'), A(1, 16, 'float32x4')] };
 const ibSnow = { arrayStride: 16, stepMode: 'instance', attributes: [A(0, 0, 'float32x4')] };
@@ -102,12 +103,15 @@ const pLeaf = scenePipe(mLeaf, 'vs', 'fs', [ibLeaf], { strip: true, constants: {
 const pLeaf5 = scenePipe(mLeaf, 'vs', 'fs', [ibLeaf], { strip: true, constants: { ROWS: 5 } });
 const pLeafS = scenePipe(mLeaf, 'vs', 'fs', [ibLeaf], { strip: true, constants: { ROWS: 3, FAR: 70 } });
 const pLeafF = scenePipe(mLeaf, 'vs', 'fs', [ibLeaf], { strip: true, constants: { ROWS: 3 } });
-const pFish = scenePipe(mAnim, 'vsFish', 'fsFish', [vbSolid, ibAnim]);
-const pManta = scenePipe(mAnim, 'vsManta', 'fsManta', [vbSolid, ibAnim]);
+const pFish = scenePipe(mAnim, 'vsFish', 'fsFish', [vbSolid, ibFishL]);
+const pManta = scenePipe(mAnim, 'vsManta', 'fsManta', [vbSolid, ibAnim]), pKraken = scenePipe(mAnim, 'vsKraken', 'fsKraken', [vbSolid, ibAnim]), pJelly = scenePipe(mAnim, 'vsJelly', 'fsJelly', [vbSolid, ibAnim]), pTorp = scenePipe(mAnim, 'vsTorp', 'fsTorp', [vbSolid, ibAnim]);
 const pSurf = scenePipe(mSurf, 'vs', 'fs', [], { strip: true }), pBack = scenePipe(mSurf, 'vsB', 'fsB', [], { strip: true });
 const pBub = scenePipe(mSpr, 'vsBub', 'fsBub', [ibBub], { strip: true, blend: { color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } } });
 const ADD = { color: { srcFactor: 'one', dstFactor: 'one' }, alpha: { srcFactor: 'one', dstFactor: 'one' } };
 const pSnow = scenePipe(mSpr, 'vsSnow', 'fsSnow', [ibSnow], { strip: true, blend: ADD });
+const pFlash = scenePipe(mSpr, 'vsFlash', 'fsFlash', [ibBub], { strip: true, blend: ADD });
+const pDebris = scenePipe(mSpr, 'vsDebris', 'fsDebris', [ibBub], { strip: true, blend: { color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } } });
+const pTrail = scenePipe(mSpr, 'vsTrail', 'fsBub', [ibBub], { strip: true, blend: { color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } } });
 const pGl = scenePipe(mLeaf, 'vsGl', 'fsGl', [ibBub], { strip: true, blend: ADD, constants: { ROWS: 7 } });
 const pSolidSh = shadowPipe(mSolid, 'vs', [vbSolid, ibSolid]), pTerrSh = shadowPipe(mSolid, 'vs', [vbSolid, ibSolid], { cull: 'front' });
 const pLeafSh = shadowPipe(mLeaf, 'vs', [ibLeaf], { strip: true, constants: { ROWS: 3 } });
@@ -273,14 +277,14 @@ D = Wd.gy = T.smp = null; // with gy goes the generator's working memory (about 
 
 await say('Building set pieces…', 0.94, 1200);
 // mesh ids: 0-3 boulders, 4-6 sponges, 7-8 coral, 9 tube sponge, 10 whale fluke, 11 ship, 12 manta, 13 fish,
-// 14-20 rock chunks + pebbles, 21-22 coral LOD, 23-25 far LOD of the large rock chunks
+// 14-20 rock chunks + pebbles, 21-22 coral LOD, 23-25 far LOD of the large rock chunks, 26 kraken, 27 jellyfish, 28 torpedo
 const meshes = [meshChunk(1, 3), meshChunk(7, 3), meshChunk(13, 3), meshChunk(22, 3),
   meshLathe([[0, 0, 0.5], [0.34, 0, 0.6], [0.5, 0.2, 0.85], [0.6, 0.6, 1], [0.55, 0.95, 1], [0.47, 1.08, 1], [0.38, 1.1, 0.9], [0.3, 1.0, 0.45], [0.26, 0.6, 0.15], [0, 0.35, 0.05]], 18, 0.3, 9),
   meshLathe([[0, 0, 0.5], [0.2, 0, 0.6], [0.26, 0.5, 0.85], [0.4, 1.25, 1], [0.4, 1.42, 1], [0.33, 1.48, 0.9], [0.26, 1.38, 0.4], [0.18, 0.8, 0.12], [0, 0.5, 0.05]], 16, 0.35, 8),
   meshLathe([[0, 0, 0.5], [0.5, 0, 0.7], [0.72, 0.18, 1], [0.74, 0.38, 1], [0.62, 0.5, 0.9], [0.48, 0.42, 0.45], [0.4, 0.2, 0.15], [0, 0.14, 0.06]], 18, 0.25, 10),
   meshCoral(0), meshCoral(1), meshTubes()].map((m) => m.build());
 meshes.push(meshFluke(), meshShip().build(), meshManta().build(), meshFish().build(),
-  meshChunk(3).build(), meshChunk(11).build(), meshChunk(29).build(), meshChunk(5, 3).build(), meshChunk(17, 3).build(), meshChunk(41, 3).build(), meshChunk(9, 1).build(), meshCoral(0, 1).build(), meshCoral(1, 1).build(), meshChunk(5, 2, 1).build(), meshChunk(17, 2, 1).build(), meshChunk(41, 2, 1).build());
+  meshChunk(3).build(), meshChunk(11).build(), meshChunk(29).build(), meshChunk(5, 3).build(), meshChunk(17, 3).build(), meshChunk(41, 3).build(), meshChunk(9, 1).build(), meshCoral(0, 1).build(), meshCoral(1, 1).build(), meshChunk(5, 2, 1).build(), meshChunk(17, 2, 1).build(), meshChunk(41, 2, 1).build(), meshKraken().build(), meshJelly().build(), meshTorpedo().build());
 let nV = 0, nI = 0;
 for (const m of meshes) { m.v0 = nV; m.i0 = nI; nV += m.nv; nI += m.ib.length; }
 const allV = new Uint8Array(nV * 16), allI = new Uint32Array(nI);
@@ -294,8 +298,22 @@ const ibChunk = Wd.chunks.map((c) => buf(c.data, BU.VERTEX)), ibProp = Wd.props.
 const ibBig = buf(new Uint8Array(Wd.big.buf), BU.VERTEX), ibBigF = buf(new Uint8Array(Wd.bigF.buf), BU.VERTEX), ibSmall = buf(new Uint8Array(Wd.small.buf), BU.VERTEX);
 const ibFish = buf(Wd.fish, BU.VERTEX), ibManta = buf(Wd.mantas, BU.VERTEX), ibBubbles = buf(Wd.bubbles, BU.VERTEX), ibSnowB = buf(Wd.snow, BU.VERTEX);
 const ibGl = buf(Wd.glints, BU.VERTEX), nGl = Wd.glints.length / 8;
-const nFish = Wd.fish.length / 8, nManta = Wd.mantas.length / 8, nBub = Wd.bubbles.length / 8, nSnow = Wd.snow.length / 4;
-const MANTA = meshes[12], FISH = meshes[13];
+const nFish = Wd.fish.length / 12, nManta = Wd.mantas.length / 8, nBub = Wd.bubbles.length / 8, nSnow = Wd.snow.length / 4;
+const MANTA = meshes[12], FISH = meshes[13], KRAKEN = meshes[26], ibKraken = buf(Wd.kraken, BU.VERTEX), JELLY = meshes[27], ibJelly = buf(Wd.jelly, BU.VERTEX), nJelly = Wd.jelly.length / 8, TORP = meshes[28];
+// Sphere colliders in an 8 m grid over x, z (mkGrid: cell starts and sphere indices). SPH: the large rocks the camera can't enter
+// (the terrain itself is in the collision field below); HIT: more things (small rocks, sponges, corals, the ship, the fluke) only torpedoes burst on.
+const gcell = (x, z) => clamp(floor((x + 192) / 8), 0, 47) + 48 * clamp(floor((z + 192) / 8), 0, 47);
+const mkGrid = (S) => {
+  const n = S.length / 4, st = new Uint32Array(48 * 48 + 1), ix = new Uint32Array(n);
+  for (let i = 0; i < n; i++) st[gcell(S[i * 4], S[i * 4 + 2]) + 1]++;
+  for (let c = 0; c < 48 * 48; c++) st[c + 1] += st[c];
+  const fill = st.slice(); for (let i = 0; i < n; i++) ix[fill[gcell(S[i * 4], S[i * 4 + 2])]++] = i;
+  return [st, ix];
+};
+const SPH = Wd.col, [GS, GI] = mkGrid(SPH), HIT = Wd.hit, [HS, HI] = mkGrid(HIT);
+// the fish schools (consecutive instances sharing a centre and orbit), the mantas, the kraken and the jellyfish, for torpedo hits
+const FI = Wd.fish, MT = Wd.mantas, KR = Wd.kraken, JL = Wd.jelly, SCHL = [];
+for (let i = 0; i < FI.length; i += 12) { const L = SCHL[SCHL.length - 1]; if (L && L[0] === FI[i] && L[1] === FI[i + 1] && L[2] === FI[i + 2] && L[3] === FI[i + 3]) L[5]++; else SCHL.push([FI[i], FI[i + 1], FI[i + 2], FI[i + 3], i, 1]); }
 Q.writeTexture({ texture: tVol }, Wd.volD, { bytesPerRow: NX, rowsPerImage: NY / 2 }, [NX / 2, NY / 2, NZ / 2]);
 Q.writeTexture({ texture: tMap }, Wd.gm, { bytesPerRow: 2048 }, [512, 512]);
 
@@ -471,6 +489,9 @@ function render() {
     if (lod) drawCells(r, Wd.props[i].start, Wd.props[i].lo, Wd.props[i].hi, 3, meshes[18 + i], 0, 6, 110);
   }
   r.setPipeline(pManta); r.setVertexBuffer(1, ibManta); r.drawIndexed(MANTA.ib.length, nManta, MANTA.i0, MANTA.v0, 0);
+  r.setPipeline(pKraken); r.setVertexBuffer(1, ibKraken); r.drawIndexed(KRAKEN.ib.length, 1, KRAKEN.i0, KRAKEN.v0, 0);
+  if (nTorp) { r.setPipeline(pTorp); r.setVertexBuffer(1, ibTorp); r.drawIndexed(TORP.ib.length, nTorp, TORP.i0, TORP.v0, 0); }
+  r.setPipeline(pJelly); r.setVertexBuffer(1, ibJelly); r.drawIndexed(JELLY.ib.length, nJelly, JELLY.i0, JELLY.v0, 0);
   r.setPipeline(pFish); r.setVertexBuffer(1, ibFish); r.drawIndexed(FISH.ib.length, nFish, FISH.i0, FISH.v0, 0);
   // kelp and plants: 9-row blades up close, 5 rows mid-range, a decimated set far away
   r.setPipeline(pLeaf); r.setVertexBuffer(0, ibBig); drawCells(r, Wd.big.start, Wd.big.lo, Wd.big.hi, 5, false, 18, 0, 24);
@@ -480,6 +501,9 @@ function render() {
   r.setPipeline(pSurf); r.draw(4);
   r.setPipeline(pBack); r.draw(4);
   r.setPipeline(pBub); r.setVertexBuffer(0, ibBubbles); r.draw(4, nBub);
+  r.setPipeline(pTrail); r.setVertexBuffer(0, ibTrail); r.draw(4, NTR);
+  r.setPipeline(pDebris); r.setVertexBuffer(0, ibDebris); r.draw(4, ND);
+  r.setPipeline(pFlash); r.setVertexBuffer(0, ibFlash); r.draw(4, NFL);
   r.setPipeline(pGl); r.setVertexBuffer(0, ibGl); r.draw(4, nGl);
   r.setPipeline(pSnow); r.setVertexBuffer(0, ibSnowB); r.draw(4, nSnow);
   r.end();
@@ -503,12 +527,65 @@ function render() {
 // each axis for the gradient
 const CE = new Float64Array([0, 0, 0, .375, 0, 0, -.375, 0, 0, 0, .375, 0, 0, -.375, 0, 0, 0, .375, 0, 0, -.375]), CS = new Float64Array(7);
 const cv = (x, y, z) => { const b = CI[(x >> 2) + CN * ((y >> 2) + NY / 4 * (z >> 2))]; return b > 1 ? CG[b * 64 - 128 + (x & 3) + 4 * (y & 3) + 16 * (z & 3)] : b * 254 - 127; };
-function sd(j) {
-  const x = (F[CX] + CE[j * 3] - OX) / VS - CO, y = (F[CY] + CE[j * 3 + 1] - OY) / VS, z = (F[CZ] + CE[j * 3 + 2] - OZ) / VS - CO;
+// distance to the terrain rock (metres, > 0 in rock, clamped to about ±1 m) at a world position; outside the baked area: water
+function sdf(px, py, pz) {
+  const x = (px - OX) / VS - CO, y = (py - OY) / VS, z = (pz - OZ) / VS - CO;
+  if (x < 0 || z < 0 || y < 0 || x >= CN * 4 - 1 || z >= CN * 4 - 1 || y >= NY - 1) return -1;
   const ix = x | 0, iy = y | 0, iz = z | 0, u = x - ix, v = y - iy, a = cv(ix, iy, iz), b = cv(ix, iy + 1, iz), c = cv(ix, iy, iz + 1), d = cv(ix, iy + 1, iz + 1);
   const p = a + (cv(ix + 1, iy, iz) - a) * u, q = b + (cv(ix + 1, iy + 1, iz) - b) * u, r = c + (cv(ix + 1, iy, iz + 1) - c) * u, s = d + (cv(ix + 1, iy + 1, iz + 1) - d) * u;
-  const e = p + (q - p) * v; CS[j] = (e + (r + (s - r) * v - e) * (z - iz)) / 127;
+  const e = p + (q - p) * v; return (e + (r + (s - r) * v - e) * (z - iz)) / 127;
 }
+function sd(j) { CS[j] = sdf(F[CX] + CE[j * 3], F[CY] + CE[j * 3 + 1], F[CZ] + CE[j * 3 + 2]); }
+// is any sphere of a grid within `pad` of the point?
+function gridHit(S, st, ix, px, py, pz, pad) {
+  const gx = clamp(floor((px + 192) / 8), 0, 47), gz = clamp(floor((pz + 192) / 8), 0, 47);
+  for (let cz = max(gz - 1, 0); cz <= min(gz + 1, 47); cz++) for (let cx = max(gx - 1, 0); cx <= min(gx + 1, 47); cx++) {
+    const c = cx + 48 * cz;
+    for (let j = st[c]; j < st[c + 1]; j++) { const o = ix[j] * 4, dx = px - S[o], dy = py - S[o + 1], dz = pz - S[o + 2], r = S[o + 3] + pad; if (dx * dx + dy * dy + dz * dz < r * r) return true; }
+  }
+  return false;
+}
+// is there rock (terrain or a large rock) at this point?
+const solidAt = (px, py, pz) => sdf(px, py, pz) > 0 || gridHit(SPH, GS, GI, px, py, pz, 0);
+// the animated things, at the shaders' positions (the same formulas as vsFish, vsManta, vsKraken and vsJelly)
+function dynHit(px, py, pz) {
+  const t = F[TIME];
+  for (let i = 0; i < MT.length; i += 8) { // mantas: wide and flat
+    const R = MT[i + 3], ta = t * MT[i + 5] + MT[i + 4], sz = MT[i + 6], dx = px - (MT[i] + R * cos(ta)), dy = py - (MT[i + 1] + 2.5 * sin(2 * ta + MT[i + 7])), dz = pz - (MT[i + 2] + 0.75 * R * sin(ta)), w = sz * 0.8 + 0.3;
+    if (dx * dx + dz * dz < w * w && abs(dy) < sz * 0.25 + 0.4) return true;
+  }
+  for (let i = 0; i < KR.length; i += 8) { // the kraken: a chain of spheres from the mantle back along the arms
+    const R = KR[i + 3], ta = t * KR[i + 5] + KR[i + 4], sz = KR[i + 6], ph = 2 * ta + KR[i + 7] * 9;
+    const cx = KR[i] + R * cos(ta), cy = KR[i + 1] + 3 * sin(ph), cz = KR[i + 2] + 0.75 * R * sin(ta);
+    let tx = -R * sin(ta), ty = 6 * cos(ph), tz = 0.75 * R * cos(ta); const l = hypot(tx, ty, tz) * Math.sign(KR[i + 5]); tx /= l; ty /= l; tz /= l;
+    for (let k = 0; k < 5; k++) {
+      const zz = (k === 0 ? 1.8 : k === 1 ? 0.3 : k === 2 ? -1.5 : k === 3 ? -3.5 : -6) * sz, r = (k === 0 ? 0.8 : k === 1 ? 0.7 : k === 2 ? 0.6 : k === 3 ? 0.45 : 0.3) * sz + 0.3;
+      const dx = px - (cx + tx * zz), dy = py - (cy + ty * zz), dz = pz - (cz + tz * zz);
+      if (dx * dx + dy * dy + dz * dz < r * r) return true;
+    }
+  }
+  for (let i = 0; i < JL.length; i += 8) { // jellyfish: the bell
+    const ta = t * JL[i + 5] + JL[i + 4], R = JL[i + 3], sz = JL[i + 6], r = sz * 0.95 + 0.3;
+    const dx = px - (JL[i] + R * sin(ta)), dy = py - (JL[i + 1] + 1.5 * sin(t * 0.5 + JL[i + 4] * 3) + 2 * sin(ta * 0.7) + 0.2 * sz), dz = pz - (JL[i + 2] + R * cos(ta * 0.8));
+    if (dx * dx + dy * dy + dz * dz < r * r) return true;
+  }
+  for (const L of SCHL) { // fish: only the school whose swimming space the point is in
+    const R = L[3];
+    if (abs(px - L[0]) > R + 5 || abs(pz - L[2]) > 0.6 * R + 5 || abs(py - L[1]) > 7) continue;
+    for (let i = L[4], e = i + L[5] * 12; i < e; i += 12) {
+      const s = FI[i + 4], sp = FI[i + 5], ta = t * sp + FI[i + 7] * 6.3 + (FI[i + 8] - 0.5) * (26 / R), ph = FI[i + 7] * 17;
+      let tx = -R * sin(ta), ty = 6.6 * cos(3 * ta + ph), tz = 0.6 * R * cos(ta); const l = hypot(tx, ty, tz) * Math.sign(sp); tx /= l; ty /= l; tz /= l;
+      let sx = tz, sz = -tx; const sl = hypot(sx, sz) || 1; sx /= sl; sz /= sl; // S = normalize(cross(up, T)), Up = cross(T, S)
+      const ux = ty * sz, uy = tz * sx - tx * sz, uz = -ty * sx, a = (FI[i + 9] - 0.5) * 5 + sin(t * 0.6 + s * 40) * 0.5, b = (FI[i + 10] - 0.5) * 3.2 + cos(t * 0.5 + s * 31) * 0.4;
+      const dx = px - (L[0] + R * cos(ta) + sx * a + ux * b), dy = py - (L[1] + 2.2 * sin(3 * ta + ph) + uy * b), dz = pz - (L[2] + 0.6 * R * sin(ta) + sz * a + uz * b);
+      if (dx * dx + dy * dy + dz * dz < 0.64) return true;
+    }
+  }
+  return false;
+}
+// what a torpedo bursts on: rock, small rocks, sponges and corals, the ship, the fluke, and the animals (but not kelp)
+// 1: a static thing (rock, ship, sponge...), 2: an animal, 0: nothing
+const torpHit = (px, py, pz) => solidAt(px, py, pz) || gridHit(HIT, HS, HI, px, py, pz, 0.25) ? 1 : dynHit(px, py, pz) ? 2 : 0;
 // Moves the camera by F[MX..MZ] in steps shorter than its radius CR (so it can't pass through thin rock), pushing it
 // back out after each step and dropping velocity into the rock, so it slides along.
 const CR = 0.5;
@@ -525,7 +602,95 @@ function collide() {
       F[CX] -= gx * s; F[CY] -= gy * s; F[CZ] -= gz * s;
       if (vn > 0) { F[VX] -= gx * vn; F[VY] -= gy * vn; F[VZ] -= gz * vn; }
     }
+    // large rocks: push the camera out of the spheres nearby and drop the velocity into them
+    const sx = clamp(floor((F[CX] + 192) / 8), 0, 47), sz = clamp(floor((F[CZ] + 192) / 8), 0, 47);
+    for (let cz = max(sz - 1, 0); cz <= min(sz + 1, 47); cz++) for (let cx = max(sx - 1, 0); cx <= min(sx + 1, 47); cx++) {
+      const c = cx + 48 * cz;
+      for (let j = GS[c]; j < GS[c + 1]; j++) {
+        const o = GI[j] * 4, dx = F[CX] - SPH[o], dy = F[CY] - SPH[o + 1], dz = F[CZ] - SPH[o + 2], R = SPH[o + 3] + CR, d2 = dx * dx + dy * dy + dz * dz;
+        if (d2 >= R * R) continue;
+        const d = sqrt(d2) || 1e-3, nx = dx / d, ny = dy / d, nz = dz / d, vn = F[VX] * nx + F[VY] * ny + F[VZ] * nz;
+        F[CX] += nx * (R - d); F[CY] += ny * (R - d); F[CZ] += nz * (R - d);
+        if (vn < 0) { F[VX] -= nx * vn; F[VY] -= ny * vn; F[VZ] -= nz * vn; }
+      }
+    }
   }
+}
+
+// ---------------------------------------------------------------- torpedoes
+// Fire (click or Space) from the left or right side in turn, aimed at the crosshair. Each flies straight, leaving a trail of
+// bubbles (a ring of instances the shader ages and lifts to the surface), and bursts on rock, at the surface or at the end of its range.
+const TMAX = 8, TV = 42, NTR = 12288, TL = new Uint8Array(TMAX), TP = new Float64Array(TMAX * 10), TS = new Float32Array(TMAX * 8);
+// TP per torpedo: 0-2 position, 3-5 direction, 6 distance flown, 7 distance since the last trail bubbles, 8 roll, 9 range
+const TB = new Float32Array(NTR * 8), ibTorp = device.createBuffer({ size: TMAX * 32, usage: BU.VERTEX | BU.COPY_DST });
+for (let i = 0; i < NTR; i++) TB[i * 8 + 4] = 1e9; // not born yet
+const ibTrail = buf(TB, BU.VERTEX);
+// the explosion: a flash (a few sprites the shader ages) and rock chips (a ring of instances, like the bubbles)
+const ND = 1024, NFL = 16, DB = new Float32Array(ND * 8), FLB = new Float32Array(NFL * 8);
+for (let i = 0; i < ND; i++) DB[i * 8 + 4] = 1e9;
+for (let i = 0; i < NFL; i++) FLB[i * 8 + 4] = 1e9;
+const ibDebris = buf(DB, BU.VERTEX), ibFlash = buf(FLB, BU.VERTEX);
+let nTorp = 0, TRI = 0, tr0 = 0, trN = 0, tSide = 1, tNext = 0;
+const bub = (x, y, z, s, rise, wob) => {
+  const o = TRI * 8; TB[o] = x; TB[o + 1] = y; TB[o + 2] = z; TB[o + 3] = s; TB[o + 4] = F[TIME]; TB[o + 5] = rise; TB[o + 6] = Math.random() * 6.3; TB[o + 7] = wob;
+  TRI = (TRI + 1) % NTR; trN++;
+};
+let DI = 0, dr0 = 0, drN = 0, FLI = 0, flDirty = false;
+// the torpedo flying along (dx, dy, dz) bursts at (x, y, z): flash, a cloud of bubbles rising to the surface, and chips when it hit rock
+function boom(x, y, z, dx, dy, dz, rock) {
+  const f = FLI * 8; FLB[f] = x - dx * 0.8; FLB[f + 1] = y - dy * 0.8; FLB[f + 2] = z - dz * 0.8; FLB[f + 3] = 3.2; FLB[f + 4] = F[TIME];
+  FLI = (FLI + 1) % NFL; flDirty = true;
+  for (let j = 0; j < 110; j++) { const a = Math.random() * 6.283, b = Math.random() * 2 - 1, r = Math.sqrt(1 - b * b) * 1.1; bub(x + cos(a) * r, y + b * 1.1, z + sin(a) * r, 0.05 + Math.random() * Math.random() * 0.3, 0.8 + Math.random() * 1.6, 0.5 + Math.random() * 1.5); }
+  if (rock) for (let j = 0; j < 28; j++) {
+    const o = DI * 8; let vx = -dx * 0.7 + Math.random() * 2 - 1, vy = -dy * 0.7 + Math.random() * 2 - 1, vz = -dz * 0.7 + Math.random() * 2 - 1; const l = sqrt(vx * vx + vy * vy + vz * vz) || 1, sp = (2 + Math.random() * 6) / l;
+    DB[o] = x; DB[o + 1] = y; DB[o + 2] = z; DB[o + 3] = 0.05 + Math.random() * 0.15; DB[o + 4] = F[TIME]; DB[o + 5] = vx * sp; DB[o + 6] = vy * sp; DB[o + 7] = vz * sp;
+    DI = (DI + 1) % ND; drN++;
+  }
+}
+function fire() {
+  if (menu || F[TIME] < tNext) return;
+  let k = 0; while (k < TMAX && TL[k]) k++;
+  if (k === TMAX) return;
+  tNext = F[TIME] + 0.3; tSide = -tSide;
+  const cx = F[CX], cy = F[CY], cz = F[CZ], fx = F[FX], fy = F[FY], fz = F[FZ];
+  // the aim point: where the crosshair meets rock, or 60 m out in open water
+  let d = 2; while (d < 150 && !solidAt(cx + fx * d, cy + fy * d, cz + fz * d)) d++;
+  if (d >= 150) d = 60;
+  const ox = cx + F[RX] * tSide * 2.6 + F[UX] * -0.9 + fx * 1.6, oy = cy + F[UY] * -0.9 + fy * 1.6, oz = cz + F[RZ] * tSide * 2.6 + F[UZ] * -0.9 + fz * 1.6;
+  let dx = cx + fx * d - ox, dy = cy + fy * d - oy, dz = cz + fz * d - oz; const l = sqrt(dx * dx + dy * dy + dz * dz) || 1; dx /= l; dy /= l; dz /= l;
+  const o = k * 10; TL[k] = 1;
+  TP[o] = ox; TP[o + 1] = oy; TP[o + 2] = oz; TP[o + 3] = dx; TP[o + 4] = dy; TP[o + 5] = dz; TP[o + 6] = 0; TP[o + 7] = 0; TP[o + 8] = 0; TP[o + 9] = l + (d >= 60 ? 90 : 3);
+  if (SFX) SFX(0, tSide * 0.6);
+}
+function torp(dt) {
+  nTorp = 0; tr0 = TRI; trN = 0; dr0 = DI; drN = 0;
+  for (let k = 0; k < TMAX; k++) {
+    if (!TL[k]) continue;
+    const o = k * 10; let todo = TV * dt, hit = false, hk = 0;
+    while (todo > 0 && !hit) {
+      const s = todo > 0.5 ? 0.5 : todo; todo -= s;
+      TP[o] += TP[o + 3] * s; TP[o + 1] += TP[o + 4] * s; TP[o + 2] += TP[o + 5] * s; TP[o + 6] += s; TP[o + 7] += s;
+      while (TP[o + 7] >= 0.5) {
+        TP[o + 7] -= 0.5;
+        for (let j = 0; j < 2; j++) { const big = Math.random() < 0.2; bub(TP[o] - TP[o + 3] * 1.1 + (Math.random() - 0.5) * 0.2, TP[o + 1] - TP[o + 4] * 1.1 + (Math.random() - 0.5) * 0.2, TP[o + 2] - TP[o + 5] * 1.1 + (Math.random() - 0.5) * 0.2, big ? 0.09 + Math.random() * 0.1 : 0.03 + Math.random() * 0.05, 0.9 + Math.random() * 0.9, 0.5 + Math.random()); }
+      }
+      hk = torpHit(TP[o], TP[o + 1], TP[o + 2]);
+      hit = hk > 0 || TP[o + 6] >= TP[o + 9] || TP[o + 1] > -0.6;
+    }
+    if (hit) {
+      boom(TP[o], TP[o + 1], TP[o + 2], TP[o + 3], TP[o + 4], TP[o + 5], hk === 1);
+      TL[k] = 0;
+      if (SFX) SFX(1, 0);
+      continue;
+    }
+    TP[o + 8] += dt * 9;
+    const q = nTorp++ * 8;
+    TS[q] = TP[o]; TS[q + 1] = TP[o + 1]; TS[q + 2] = TP[o + 2]; TS[q + 3] = 1.2; TS[q + 4] = TP[o + 3]; TS[q + 5] = TP[o + 4]; TS[q + 6] = TP[o + 5]; TS[q + 7] = TP[o + 8];
+  }
+  if (nTorp) Q.writeBuffer(ibTorp, 0, TS, 0, nTorp * 8);
+  if (drN) { if (dr0 + drN <= ND) Q.writeBuffer(ibDebris, dr0 * 32, DB, dr0 * 8, drN * 8); else Q.writeBuffer(ibDebris, 0, DB, 0, ND * 8); }
+  if (flDirty) { Q.writeBuffer(ibFlash, 0, FLB); flDirty = false; }
+  if (trN) { if (tr0 + trN <= NTR) Q.writeBuffer(ibTrail, tr0 * 32, TB, tr0 * 8, trN * 8); else Q.writeBuffer(ibTrail, 0, TB, 0, NTR * 8); }
 }
 
 function frame(now) {
@@ -571,6 +736,7 @@ function frame(now) {
     F[YAW] = yaw; F[PIT] = pitch; F[VX] = vx; F[VY] = vy; F[VZ] = vz; F[MX] = x - F[CX]; F[MY] = y - F[CY]; F[MZ] = z - F[CZ];
     collide();
   }
+  torp(dt);
   render();
   if (hud) {
     hN++; if (dtr > hMax) hMax = dtr; if (dtr < hMin) hMin = dtr; if (dtr > hPer * 1.5) { hLate++; hTot++; }
@@ -587,17 +753,21 @@ const key = (e, v) => {
     default: if (v && !e.repeat) {
       if (e.code === 'KeyH') { hud = !hud; hTot = 0; hPer = 1e9; info.textContent = ''; }
       else if (e.code === 'KeyM') mute();
+      else if (e.code === 'Space') fire();
+      else if (e.code === 'KeyC') keep('abyssalCockpit', $('v').classList.toggle('x') ? 0 : 1);
       else if (e.code === 'Escape') ui(true);
       else if (e.code >= 'Digit1' && e.code <= 'Digit6') lookAt(...POSES[e.code.charCodeAt(5) - 49]);
     }
   }
 };
+try { if (localStorage.abyssalCockpit === '0') $('v').className = 'x'; } catch {} // the cockpit overlay was switched off (C)
 // behind the menu only the stats and mute keys work
 addEventListener('keydown', (e) => { if (menu && e.code !== 'KeyH' && e.code !== 'KeyM') return; sound(); key(e, 1); });
 addEventListener('keyup', (e) => key(e, 0));
 const release = () => { kf = kb = kl = kr = ku = kd = ks = 0; tId = -1; tN = 0; };
 const capture = () => { sound(); const p = canvas.requestPointerLock({ unadjustedMovement: true }); if (p && p.catch) p.catch(() => canvas.requestPointerLock()).catch(() => 0); };
 canvas.addEventListener('click', capture);
+canvas.addEventListener('mousedown', (e) => { if (e.button === 0 && document.pointerLockElement === canvas) { sound(); fire(); } });
 addEventListener('mousemove', (e) => { if (document.pointerLockElement === canvas) { mdx += e.movementX; mdy += e.movementY; } });
 addEventListener('blur', release);
 const touch = (e) => {

@@ -43,9 +43,11 @@ Nothing to install, and it works offline. It needs a browser with **WebGPU**. If
 | Menu | `Esc` releases the mouse and opens the menu with the list of controls; **Resume** takes you back |
 | Sound on / off | `M` (sound starts when you dive in) |
 | Performance stats | `H` |
+| Cockpit overlay on / off | `C` |
+| Fire a torpedo | Left click or `Space`: from the left or the right side in turn, at the crosshair |
 | Detail level | **Low**, **Medium** or **High** in the menu (reloads the page) |
 
-The seabed, cliffs and arches are solid: you glide along the rock instead of swimming into it, and you still fit through every tunnel and arch. Kelp, plants, corals, sponges, loose rocks, the floating boulders, the ship and the whale tail you can swim through.
+The seabed, cliffs, arches, the floating boulders and the large rocks are solid: you glide along the rock instead of swimming into it, and you still fit through every tunnel and arch. Kelp, plants, corals, sponges, small rocks, the ship and the whale tail you can swim through.
 
 **On a touchscreen:** hold one finger down to swim forward and slide it to steer. Put a second finger down to go faster. The `≡` button in the corner opens the menu. Phones always show the scene in landscape and start on Low or Medium detail. (Touch support is experimental.)
 

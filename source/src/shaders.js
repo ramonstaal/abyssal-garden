@@ -500,10 +500,11 @@ struct GO { @builtin(position) cp: vec4f, @location(0) uv: vec2f, @location(1) @
 // ---------------------------------------------------------------- fish + mantas
 const W_ANIM = S_B + /*wgsl*/`
 struct VI { @location(0) p: vec3f, @location(1) n: vec4f, @location(2) a: vec4f, @location(3) b: vec4f };
-struct VO { @builtin(position) cp: vec4f, @location(0) wp: vec3f, @location(1) n: vec3f, @location(2) op: vec3f, @location(3) @interpolate(flat) sd: f32, @location(4) lt: f32 };
-@vertex fn vsFish(i: VI) -> VO {
+struct VO { @builtin(position) cp: vec4f, @location(0) wp: vec3f, @location(1) n: vec3f, @location(2) op: vec3f, @location(3) @interpolate(flat) sd: f32, @location(4) lt: f32, @location(5) @interpolate(flat) sc: f32 };
+struct VF { @location(0) p: vec3f, @location(1) n: vec4f, @location(2) a: vec4f, @location(3) b: vec4f, @location(4) h: vec4f };
+@vertex fn vsFish(i: VF) -> VO {
   var o: VO;
-  let s = i.b.x; let h = vec3f(hs(s), hs(s + .37), hs(s + .71));
+  let s = i.b.x; let h = i.h.xyz;
   let R = i.a.w; let t = g.cam.w;
   let ta = t * i.b.y + i.b.w * 6.3 + (h.x - .5) * (26. / R);
   let ph = i.b.w * 17.;
@@ -514,14 +515,20 @@ struct VO { @builtin(position) cp: vec4f, @location(0) wp: vec3f, @location(1) n
   var l = i.p * i.b.z * (.75 + .5 * h.z);
   l.z += sin(t * 9. + s * 50. + l.x * 5.) * .22 * (.25 * i.b.z - l.x);
   let w = P + off + T * l.x + Up * l.y + S * l.z;
-  o.cp = g.vp * vec4f(w, 1.); o.wp = w; o.n = T * i.n.x + Up * i.n.y + S * i.n.z; o.op = i.p; o.sd = s;
+  o.cp = g.vp * vec4f(w, 1.); o.wp = w; o.n = T * i.n.x + Up * i.n.y + S * i.n.z; o.op = i.p; o.sd = s; o.sc = i.b.w;
   o.lt = shadow1(w);
   return o;
 }
 @fragment fn fsFish(i: VO) -> @location(0) vec4f {
   let n = normalize(i.n); let L = g.sun.xyz; let V = normalize(g.cam.xyz - i.wp);
   let z = zone(i.wp); let vv = vol(i.wp);
-  var alb = mix(vec3f(.50, .68, .80), vec3f(.10, .22, .40), ss(-.05, .2, i.op.y));
+  // species by school: silver-blue, orange, yellow, teal, violet
+  let sp = fract(i.sc * 3.7) * 5.; var belly = vec3f(.50, .68, .80); var back = vec3f(.10, .22, .40);
+  if (sp > 1.) { belly = vec3f(.95, .60, .30); back = vec3f(.70, .18, .06); }
+  if (sp > 2.) { belly = vec3f(.95, .88, .35); back = vec3f(.55, .50, .10); }
+  if (sp > 3.) { belly = vec3f(.45, .85, .80); back = vec3f(.05, .30, .38); }
+  if (sp > 4.) { belly = vec3f(.80, .55, .90); back = vec3f(.30, .10, .45); }
+  var alb = mix(belly, back, ss(-.05, .2, i.op.y));
   alb = mix(alb, vec3f(.95, .8, .3), step(.86, fract(i.sd * 7.7)) * .6);
   let E = sunE(i.wp.y, z) * i.lt;
   var c = alb * (E * (.25 + .75 * sat(dot(n, L))) + amb(i.wp, n, vv.g, z) * 1.3);
@@ -574,6 +581,134 @@ struct VO { @builtin(position) cp: vec4f, @location(0) wp: vec3f, @location(1) n
   c += E * pow(sat(dot(n, normalize(V + L))), 30.) * .5 * (.3 + ca);
   let sky = amb(i.wp, vec3f(0., 1., 0.), vv.g, z);
   c += alb * sky * ca * .45 * (1. - top) + sky * pow(1. - ndv, 3.) * .35;
+  return fin(fog(c, i.wp, z));
+}
+
+// kraken: the mantle pulses, the arms trail and wave (each with its own phase, from the arm number in aux), the fins ripple
+struct KO { @builtin(position) cp: vec4f, @location(0) wp: vec3f, @location(1) n: vec3f, @location(2) op: vec3f, @location(3) @interpolate(flat) sd: f32, @location(4) k: f32, @location(5) on: vec3f };
+@vertex fn vsKraken(i: VI) -> KO {
+  var o: KO;
+  let t = g.cam.w; let R = i.a.w; let sz = i.b.z;
+  let ta = t * i.b.y + i.b.x;
+  let P = i.a.xyz + vec3f(R * cos(ta), 3. * sin(2. * ta + i.b.w * 9.), R * .75 * sin(ta));
+  let T = normalize(vec3f(-R * sin(ta), 6. * cos(2. * ta + i.b.w * 9.), R * .75 * cos(ta))) * sign(i.b.y);
+  let S = normalize(cross(vec3f(0., 1., 0.), T)); let Up = cross(T, S);
+  let k = i.n.w;
+  var l = i.p;
+  let pu = pow(max(sin(t * .85 + i.b.w * 20.), 0.), 2.);
+  if (k > .02) {
+    let n = round((k - .05) / .09); let ph = n * 2.1;
+    let sw = max(-l.z - .25, 0.);
+    let env = pow(min(sw / 5., 2.2), 1.3);
+    l.x += sin(t * 1.05 - sw * .7 + ph) * .5 * env;
+    l.y += cos(t * .8 - sw * .55 + ph * 1.3) * .4 * env - .15 * env;
+    let c = 1. - .3 * pu * min(env, 1.);
+    l = vec3f(l.x * c, l.y * c, l.z);
+  } else if (k < -.75) {
+    let a = abs(l.x);
+    l.y += .15 * clamp(a - .4, 0., 1.) * sin(t * 1.7 - a * 3. + i.b.w * 5.);
+  } else if (k > -.25) {
+    let c = 1. - .08 * pu * ss(-.3, 1., l.z);
+    l = vec3f(l.x * c, l.y * c, l.z);
+  }
+  let w = P + (S * l.x + Up * l.y + T * l.z) * sz;
+  o.cp = g.vp * vec4f(w, 1.); o.wp = w; o.n = S * i.n.x + Up * i.n.y + T * i.n.z; o.op = i.p; o.sd = i.b.w; o.k = k; o.on = i.n.xyz;
+  return o;
+}
+@fragment fn fsKraken(i: KO) -> @location(0) vec4f {
+  let dist = length(i.wp - g.cam.xyz);
+  let ca = caus(i.wp, dist);
+  let tx = textureSample(tD, sR, i.op.xy * .5 + i.op.z * .3 + i.sd);
+  let tx2 = textureSample(tD, sR, i.op.xz * 1.7 + i.sd * 3.);
+  var n = normalize(i.n); let L = g.sun.xyz; let V = normalize(g.cam.xyz - i.wp);
+  if (dot(n, V) < 0.) { n = -n; }
+  let z = zone(i.wp); let vv = vol(i.wp);
+  let arm = step(.02, i.k); let eye = step(-.75, i.k) * step(i.k, -.25); let isFin = step(i.k, -.75);
+  let up = ss(-.5, .6, normalize(i.on).y);
+  var alb = mix(vec3f(.55, .27, .27), vec3f(.20, .035, .07), up);
+  alb = mix(alb, vec3f(.09, .03, .16), ss(.45, .8, tx.a) * .7) * (.7 + .6 * tx.b);
+  let inward = ss(.2, .9, dot(normalize(i.on.xy + vec2f(1e-4)), -normalize(i.op.xy + vec2f(1e-4)))) * arm;
+  let dd = length(fract(vec2f(-i.op.z * 4., atan2(i.on.y, i.on.x) * 1.9)) - .5);
+  alb = mix(alb, vec3f(.85, .55, .5), ss(.38, .28, dd) * inward * .85);
+  alb = mix(alb, vec3f(.5, .1, .22) * (.6 + .8 * tx.b), isFin * .6);
+  var emi = vec3f(0.); var gloss = .35;
+  let sp = ss(.78, .86, tx2.a) * (1. - arm) * (1. - eye) * (1. - isFin) * up;
+  emi += vec3f(.05, .5, .7) * sp * (.6 + .4 * sin(g.cam.w * 1.3 + tx2.b * 20.));
+  if (eye > .5) {
+    let u = (i.op - vec3f(sign(i.op.x) * .47, .04, -.03)) / .2;
+    let slit = ss(.22, .12, abs(u.y)) * ss(.9, .55, abs(u.z)) * ss(.2, .5, u.x * sign(i.op.x));
+    alb = mix(vec3f(.9, .55, .08), vec3f(0.), slit);
+    emi = vec3f(.35, .22, .02) * (1. - slit); gloss = 1.;
+  }
+  let E = sunE(i.wp.y, z) * shadow4(i.wp + n * .3);
+  var c = alb * (E * sat(dot(n, L)) * (.3 + ca) + amb(i.wp, n, vv.g, z) * 1.1 + side(i.wp, n, 1., z) * .8) + emi;
+  c += E * pow(sat(dot(n, normalize(V + L))), 26.) * gloss * (.3 + ca);
+  c += amb(i.wp, vec3f(0., 1., 0.), vv.g, z) * pow(1. - sat(dot(n, V)), 3.) * vec3f(.5, .25, .3);
+  return fin(fog(c, i.wp, z));
+}
+
+// jellyfish: the bell pulses, the tentacles trail with a delay
+struct JO { @builtin(position) cp: vec4f, @location(0) wp: vec3f, @location(1) n: vec3f, @location(2) @interpolate(flat) sd: f32, @location(3) k: f32, @location(4) op: vec3f };
+@vertex fn vsJelly(i: VI) -> JO {
+  var o: JO;
+  let t = g.cam.w; let R = i.a.w; let sz = i.b.z;
+  let ta = t * i.b.y + i.b.x;
+  let P = i.a.xyz + vec3f(R * sin(ta), 1.5 * sin(t * .5 + i.b.x * 3.) + 2. * sin(ta * .7), R * cos(ta * .8));
+  let k = i.n.w;
+  var l = i.p;
+  let pl = sin(t * 1.8 + i.b.x * 5.);
+  let yw = i.b.w * 6.3 + t * .1; let cy = cos(yw); let sy = sin(yw);
+  if (k > .05) {
+    let s = (k - .1) / .9; let a = t * 1.3 - s * 4. + i.b.x * 9.; let e = 1. + .12 * pl * (1. - s);
+    l = vec3f(l.x * e + sin(a) * .18 * s * s, l.y + .2 * pl * s, l.z * e + cos(a * .9) * .18 * s * s);
+  } else {
+    l = vec3f(l.x * (1. + .13 * pl), l.y * (1. - .1 * pl), l.z * (1. + .13 * pl));
+  }
+  let w = P + vec3f(l.x * cy - l.z * sy, l.y, l.x * sy + l.z * cy) * sz;
+  o.cp = g.vp * vec4f(w, 1.); o.wp = w; o.n = vec3f(i.n.x * cy - i.n.z * sy, i.n.y, i.n.x * sy + i.n.z * cy); o.sd = i.b.w; o.k = k; o.op = i.p;
+  return o;
+}
+@fragment fn fsJelly(i: JO) -> @location(0) vec4f {
+  var n = normalize(i.n); let L = g.sun.xyz; let V = normalize(g.cam.xyz - i.wp);
+  if (dot(n, V) < 0.) { n = -n; }
+  let z = zone(i.wp); let vv = vol(i.wp);
+  let tx = textureSample(tD, sR, i.op.xz * .8 + i.sd);
+  let hue = mix(vec3f(1., .35, .75), vec3f(.3, .75, 1.), fract(i.sd * 7.3));
+  let rim = pow(1. - sat(dot(n, V)), 2.5);
+  let tent = step(.05, i.k);
+  let E = sunE(i.wp.y, z);
+  var c = hue * (E * (.15 + .35 * sat(dot(n, L))) + amb(i.wp, n, vv.g, z) * .6);
+  c += hue * (.10 + .55 * rim + .25 * ss(.5, .8, tx.a) * (1. - tent)) * (1. - .5 * tent * i.k) * 1.4;
+  return fin(fog(c, i.wp, z));
+}
+
+// torpedoes: instance a = position + size, b = direction + roll; the mesh points along +z
+struct TO { @builtin(position) cp: vec4f, @location(0) wp: vec3f, @location(1) n: vec3f, @location(2) op: vec3f, @location(3) k: f32 };
+@vertex fn vsTorp(i: VI) -> TO {
+  var o: TO;
+  let T = normalize(i.b.xyz);
+  let u0 = select(vec3f(0., 1., 0.), vec3f(1., 0., 0.), abs(T.y) > .99);
+  let S = normalize(cross(u0, T)); let U = cross(T, S);
+  let cr = cos(i.b.w); let sr = sin(i.b.w);
+  let l = vec3f(i.p.x * cr - i.p.y * sr, i.p.x * sr + i.p.y * cr, i.p.z);
+  let nl = vec3f(i.n.x * cr - i.n.y * sr, i.n.x * sr + i.n.y * cr, i.n.z);
+  let w = i.a.xyz + (S * l.x + U * l.y + T * l.z) * i.a.w;
+  o.cp = g.vp * vec4f(w, 1.); o.wp = w; o.n = S * nl.x + U * nl.y + T * nl.z; o.op = i.p; o.k = i.n.w;
+  return o;
+}
+@fragment fn fsTorp(i: TO) -> @location(0) vec4f {
+  var n = normalize(i.n); let L = g.sun.xyz; let V = normalize(g.cam.xyz - i.wp);
+  if (dot(n, V) < 0.) { n = -n; }
+  let z = zone(i.wp); let vv = vol(i.wp);
+  let fn_ = step(i.k, -.75);
+  var alb = vec3f(.30, .33, .30);
+  alb = mix(alb, vec3f(.85, .65, .10), step(.30, i.op.z) * step(i.op.z, .42));
+  alb = mix(alb, vec3f(.55, .07, .05), step(.62, i.op.z) * step(i.op.z, .70));
+  alb = mix(alb, vec3f(.10, .11, .12), fn_);
+  let emi = vec3f(1.8, .6, .12) * step(i.op.z, -.93) * (1. - fn_);
+  let E = sunE(i.wp.y, z);
+  var c = alb * (E * (.25 + .75 * sat(dot(n, L))) + amb(i.wp, n, vv.g, z) * 1.3 + side(i.wp, n, 1., z) * .6) + emi;
+  c += E * pow(sat(dot(n, normalize(V + L))), 40.) * 1.2;
   return fin(fog(c, i.wp, z));
 }
 `;
@@ -658,6 +793,57 @@ fn quad(i: u32) -> vec2f { return vec2f(f32(i & 1u), f32(i >> 1u)) * 2. - 1.; }
   c = c * T + fogIn(g.cam.xyz, v / d, d, z, g.sun.xyz) * (1. - T);
   al *= mix(.35, 1., T);
   return vec4f(min(max(c * al, vec3f(0.)), vec3f(20.)), al);
+}
+@vertex fn vsTrail(@builtin(vertex_index) vi: u32, @location(0) a: vec4f, @location(1) b: vec4f) -> VO {
+  // torpedo trail bubble: a = spawn position + size, b = spawn time, rise speed, phase, wobble; it rises to the surface and pops
+  var o: VO; let q = quad(vi); let age = g.cam.w - b.x;
+  let ok = step(0., age) * step(age, 40.);
+  let h = age * b.y;
+  var p = a.xyz + vec3f(0., h, 0.);
+  let wob = (.12 + h * .02) * b.w;
+  p.x += sin(age * 1.7 + b.z) * wob; p.z += cos(age * 1.3 + b.z * 1.7) * wob;
+  let sz = a.w * ok * ss(0., .12, age) * (1. + .3 * ss(0., 12., age)) * ss(0., -1.2, p.y);
+  let w = p + (g.right.xyz * q.x + g.up.xyz * q.y) * sz;
+  o.cp = g.vp * vec4f(w, 1.); o.uv = q; o.wp = p;
+  o.pr = vec4f(b.z, sz, shadow1(p), 0.);
+  return o;
+}
+@vertex fn vsFlash(@builtin(vertex_index) vi: u32, @location(0) a: vec4f, @location(1) b: vec4f) -> VO {
+  // explosion flash: a = position + radius, b.x = start time; a glow that grows and fades in 0.45 s, with a shock ring
+  var o: VO; let q = quad(vi); let k = (g.cam.w - b.x) / .45;
+  let sz = a.w * select(0., 1. + 1.6 * k, k >= 0. && k < 1.);
+  let w = a.xyz + (g.right.xyz * q.x + g.up.xyz * q.y) * sz;
+  o.cp = g.vp * vec4f(w, 1.); o.uv = q; o.wp = a.xyz; o.pr = vec4f(k, 0., 0., 0.);
+  return o;
+}
+@fragment fn fsFlash(i: VO) -> @location(0) vec4f {
+  let k = i.pr.x; let r = length(i.uv);
+  let core = (1. - k) * (1. - k) * exp(-r * r * 6.) * 14.;
+  let rr = (r - (.25 + .75 * k)) * 9.;
+  let ring = (1. - k) * exp(-rr * rr) * 1.6;
+  let d = length(i.wp - g.cam.xyz);
+  return vec4f(min(vec3f(1., .96, .88) * (core + ring) * exp(-SIG.g * d), vec3f(40.)), 0.);
+}
+@vertex fn vsDebris(@builtin(vertex_index) vi: u32, @location(0) a: vec4f, @location(1) b: vec4f) -> VO {
+  // rock chip: a = spawn position + size, b = spawn time + velocity; it flies out, slows down in the water and sinks
+  var o: VO; let q = quad(vi); let age = g.cam.w - b.x;
+  let ok = step(0., age) * step(age, 3.5);
+  var p = a.xyz + b.yzw * ((1. - exp(-2.5 * age)) / 2.5);
+  p.y -= 1.3 * (age - (1. - exp(-1.2 * age)) / 1.2);
+  let sz = a.w * ok * ss(3.5, 2.6, age);
+  let an = age * (3. + 6. * hs(a.w * 91.)) + hs(b.x) * 6.3; let c = cos(an); let s = sin(an);
+  let w = p + (g.right.xyz * (q.x * c - q.y * s) + g.up.xyz * (q.x * s + q.y * c)) * sz;
+  o.cp = g.vp * vec4f(w, 1.); o.uv = q; o.wp = p;
+  o.pr = vec4f(hs(a.w * 57. + b.x), sz, shadow1(p), 0.);
+  return o;
+}
+@fragment fn fsDebris(i: VO) -> @location(0) vec4f {
+  let m = max(abs(i.uv.x) * .87 + abs(i.uv.y) * .5, abs(i.uv.y));
+  let al = 1. - ss(.8, 1., m);
+  let z = zone(i.wp);
+  let alb = mix(vec3f(.16, .15, .14), vec3f(.36, .31, .24), i.pr.x) * (.55 + .45 * step(0., i.uv.x - i.uv.y));
+  let c = alb * (sunE(i.wp.y, z) * (.3 + .5 * i.pr.z) + amb(i.wp, vec3f(0., 1., 0.), 1., z) * 1.4);
+  return vec4f(min(fog(c, i.wp, z) * al, vec3f(20.)), al);
 }
 @vertex fn vsSnow(@builtin(vertex_index) vi: u32, @location(0) a: vec4f) -> VO {
   var o: VO; let q = quad(vi); let t = g.cam.w;

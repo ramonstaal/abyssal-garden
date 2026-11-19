@@ -28,6 +28,23 @@ canvas {
 body:not(.g) canvas { filter: blur(1vmax) brightness(.5); transform: scale(1.06); }
 .l canvas { opacity: 0; }
 
+/* the dive boat's cockpit: a transparent overlay over the scene (cover, anchored at the bottom so the dashboard stays in
+   view), faded in when you dive; clicks and touches pass through to the canvas. C toggles it (class x). */
+#v {
+  position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity 1s;
+  background: url(/*COCKPIT*/) center bottom / cover no-repeat;
+}
+.g #v { opacity: 1; }
+#v.x { display: none; }
+
+/* crosshair: where the torpedoes go */
+#x {
+  position: absolute; left: 50%; top: 50%; z-index: 1; width: 1.1em; height: 1.1em; box-sizing: border-box; display: none;
+  transform: translate(-50%, -50%); border: 2px solid #e8fbffb3; border-radius: 50%; box-shadow: 0 0 .4em #000a; pointer-events: none;
+}
+#x::after { content: ''; position: absolute; left: 50%; top: 50%; width: 3px; height: 3px; margin: -1.5px; border-radius: 50%; background: #e8fbff; }
+.g #x { display: block; }
+
 /* menu: the loading bar and the buttons share one grid cell, so nothing jumps when they swap */
 #m {
   position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: min(2.2em, 6vmin);
@@ -108,19 +125,21 @@ svg { width: 1.5em; height: 1.5em; fill: currentColor; }
 
 /* in the scene: a small menu button (hidden while the mouse is captured, Esc does the same) and the stats line */
 #o {
-  position: absolute; top: .6em; right: .6em; display: none; padding: .3em .6em; background: #03222dd9;
+  z-index: 1; position: absolute; top: .6em; right: .6em; display: none; padding: .3em .6em; background: #03222dd9;
   box-shadow: inset 0 0 0 2px #7ff3ff, 0 .3em 1em #0009; font-size: 1.3em; color: #e8fbff; opacity: .8;
 }
 .g #o { display: flex; }
 .p #o { display: none; }
 #i {
-  position: absolute; top: 1em; left: 1.2em; margin: 0; font: .8em/1.6 ui-monospace, Consolas, monospace;
+  z-index: 1; position: absolute; top: 1em; left: 1.2em; margin: 0; font: .8em/1.6 ui-monospace, Consolas, monospace;
   white-space: pre-wrap; text-shadow: 0 1px 4px #000; pointer-events: none;
 }
 </style>
 </head>
 <body class=l>
 <canvas id=c></canvas>
+<div id=v></div>
+<i id=x></i>
 <div id=m>
   <h1>Abyssal Garden</h1>
   <div id=a>
@@ -133,12 +152,14 @@ svg { width: 1.5em; height: 1.5em; fill: currentColor; }
           <i><b>W</b><b>A</b><b>S</b><b>D</b></i>Swim
           <i><b>Q</b><b>E</b></i>Down / up
           <i><b>Shift</b></i>Faster
+          <i><b>Click</b> <b>Space</b></i>Fire
           <i><b>1</b>–<b>6</b></i>Viewpoints
         </p>
         <p>
           <i><b>Esc</b></i>Menu
           <i><b>M</b></i>Mute
           <i><b>H</b></i>Stats
+          <i><b>C</b></i>Cockpit
         </p>
       </div>
       <p id=h>Hold to swim forward · slide to steer · second finger to go faster</p>

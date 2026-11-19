@@ -3,7 +3,7 @@
 // ============================================================================
 // A fixed Web Audio graph, built on the first click / key / touch and driven by a 10 Hz timer, not the frame loop.
 // Layers: rumble, surface wash, water rush (follows camera speed), drone, bubbles, chimes and distant whale calls.
-let AC, OUT, muted = false;
+let AC, OUT, SFX, muted = false; // SFX(boom, pan): the torpedo's launch (0) and burst (1)
 const VOL = 0.78; // master level: about -18.5 LUFS, peaks near -5.5 dBFS
 function mkSound(ac) {
   const sr = ac.sampleRate;
@@ -38,6 +38,13 @@ function mkSound(ac) {
     v.p.pan.setValueAtTime(rr(-0.7, 0.7), t);
     f.setValueAtTime(f0, t); f.exponentialRampToValueAtTime(f1, t + dur);
     g.setValueAtTime(0, t); g.linearRampToValueAtTime(vol, t + att); g.setTargetAtTime(0, t + att, (dur - att) / 5);
+  };
+  SFX = (boom, pan) => {
+    const t = ac.currentTime + 0.01, d = boom ? 1.4 : 0.6, p = N(StereoPannerNode, { pan }, out, G(boom ? 1.5 : 0.6, wet)), e = G(0, p), f0 = boom ? 300 : 900;
+    e.gain.setValueAtTime(0, t); e.gain.linearRampToValueAtTime(boom ? 0.7 : 0.3, t + 0.02); e.gain.setTargetAtTime(0, t + 0.02, d / 5);
+    const f = BQ('bandpass', f0, 0.8, e); f.frequency.setValueAtTime(f0, t); f.frequency.exponentialRampToValueAtTime(boom ? 60 : 250, t + d);
+    N(AudioBufferSourceNode, { buffer: nb, loop: true, playbackRate: boom ? 1 : 1.6 }, f).stop(t + d);
+    const o = N(OscillatorNode, { frequency: boom ? 70 : 110 }, e); o.frequency.setValueAtTime(boom ? 70 : 110, t); o.frequency.exponentialRampToValueAtTime(boom ? 28 : 50, t + d); o.stop(t + d);
   };
   const NOTES = [0, 2, 5, 7, 9, 12, 14, 17, 19]; // D major pentatonic, in semitones above A4
   let lt = ac.currentTime, tB = lt + 1.5, tC = lt + 5, tW = lt + 12, lx = F[CX], ly = F[CY], lz = F[CZ];
