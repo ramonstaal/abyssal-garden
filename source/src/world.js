@@ -95,9 +95,13 @@ function makeWorld(D, T, flyPts, POSES) {
   const glint = (...a) => { nth++ % THIN || glints.push(...a); };
   const solids = []; // per mesh id: arrays of 12 floats
   const props = Array.from({ length: 6 }, () => Array.from({ length: nCells }, () => []));
-  const solid = (mesh, x, y, z, sc, q, mat, seed, ts = 1, bob = 0) => { (mesh > 3 && mesh < 10 ? props[mesh - 4][cellOf(x, z)] : (solids[mesh] ||= [])).push(x, y, z, sc, q[0], q[1], q[2], q[3], mat, seed, ts, bob); if (mesh > 3 && mesh < 10) hit.push(x, y + 0.45 * sc, z, 0.6 * sc); };
+  const solid = (mesh, x, y, z, sc, q, mat, seed, ts = 1, bob = 0) => { (mesh > 3 && mesh < 10 ? props[mesh - 4][cellOf(x, z)] : (solids[mesh] ||= [])).push(x, y, z, sc, q[0], q[1], q[2], q[3], mat, seed, ts, bob); ls = mesh; lk = mesh > 3 && mesh < 10 ? -1 : solids[mesh].length / 12 - 1; if (mesh > 3 && mesh < 10) addHit(x, y + 0.45 * sc, z, 0.6 * sc, NOREF); };
   const chunks = Array.from({ length: NCHUNK }, () => Array.from({ length: nCells }, () => []));
-  const glints = [], col = [], hit = []; // col: sphere colliders (x, y, z, radius) for the large rocks the camera must not enter; hit: more spheres only torpedoes burst on
+  const glints = [], col = [], hit = [], cref = [], href = [];
+  // each collider also remembers its rock's instance (kind 0: solids mesh + index in it; kind 1: chunk set, cell, index in the cell; -1: not a rock)
+  // and scale, so a torpedo can shrink the rock on the GPU
+  const NOREF = [-1, 0, 0, 0, 0], addCol = (x, y, z, r, ref) => { col.push(x, y, z, r); cref.push(...ref); }, addHit = (x, y, z, r, ref) => { hit.push(x, y, z, r); href.push(...ref); };
+  let ls = 0, lk = 0; // the mesh and index in it of the last solid() // col: sphere colliders (x, y, z, radius) for the large rocks the camera must not enter; hit: more spheres only torpedoes burst on
   const rel = (i, f, r) => { const p = POSES[i]; let fx = p[3] - p[0], fz = p[5] - p[2]; const l = hypot(fx, fz); fx /= l; fz /= l; return [p[0] + fx * f - fz * r, p[2] + fz * f + fx * r]; };
   const bubbles = [], kelpAbs = new Float32Array((NX / 2) * (NY / 2) * (NZ / 2));
 
@@ -279,7 +283,7 @@ function makeWorld(D, T, flyPts, POSES) {
     if (Dw(x, y, z) > -sc) continue;
     const bob = rr(0.12, 0.4), sd = rnd();
     solid(rnd() * 4 | 0, x, min(y, -2 - sc), z, sc, qRand(), 1, sd, 1, bob);
-    if (sc >= 0.9) col.push(x, min(y, -2 - sc), z, sc * 0.9); else if (sc >= 0.4) hit.push(x, min(y, -2 - sc), z, sc * 0.9);
+    if (sc >= 0.9) addCol(x, min(y, -2 - sc), z, sc * 0.9, [0, ls, lk, 0, sc]); else if (sc >= 0.4) addHit(x, min(y, -2 - sc), z, sc * 0.9, [0, ls, lk, 0, sc]);
     if (sc > 1.1) for (let j = 0; j < 7; j++) solid(rnd() * 4 | 0, x + rr(-1.6, 1.6) * sc, min(y, -2 - sc) + rr(-1.4, 1) * sc, z + rr(-1.6, 1.6) * sc, rr(0.1, 0.35), qRand(), 1, sd, 1, bob);
   }
   rseed(9);
@@ -287,7 +291,7 @@ function makeWorld(D, T, flyPts, POSES) {
     const k = pickV(); if (T.wn[k + 1] < 0.7 || hypot(T.wp[k], T.wp[k + 2]) > 170 || nearFly(T.wp[k], T.wp[k + 1], T.wp[k + 2], 6)) continue;
     const sc = rr(0.25, 1.3) * (rnd() < 0.1 ? 2 : 1);
     solid(rnd() * 4 | 0, T.wp[k], T.wp[k + 1] + sc * 0.2, T.wp[k + 2], sc, qRand(), 1, rnd(), 1, 0);
-    if (sc >= 1.1) col.push(T.wp[k], T.wp[k + 1] + sc * 0.2, T.wp[k + 2], sc * 0.9); else if (sc >= 0.5) hit.push(T.wp[k], T.wp[k + 1] + sc * 0.2, T.wp[k + 2], sc * 0.9);
+    if (sc >= 1.1) addCol(T.wp[k], T.wp[k + 1] + sc * 0.2, T.wp[k + 2], sc * 0.9, [0, ls, lk, 0, sc]); else if (sc >= 0.5) addHit(T.wp[k], T.wp[k + 1] + sc * 0.2, T.wp[k + 2], sc * 0.9, [0, ls, lk, 0, sc]);
   }
 
   rseed(10);
@@ -295,8 +299,9 @@ function makeWorld(D, T, flyPts, POSES) {
     const k = pickV(), x = T.wp[k], y = T.wp[k + 1], z = T.wp[k + 2], ny = T.wn[k + 1];
     if (hypot(x, z) > 172 || y > -3 || (ny > 0.8 && rnd() < 0.6) || nearFly(x, y, z, 3.5)) continue;
     const sc = (0.35 + 2.1 * pow(rnd(), 2.6)) * (ny > 0.8 ? 0.5 : 1), q = qRand();
-    if (sc > 0.5) (sc > 1.15 ? col : hit).push(x - T.wn[k] * sc * 0.3, y - ny * sc * 0.3, z - T.wn[k + 2] * sc * 0.3, sc * (sc > 1.15 ? 0.9 : 0.85));
-    chunks[(sc > 1.15 ? 3 : 0) + (rnd() * 3 | 0)][cellOf(x, z)].push(x - T.wn[k] * sc * 0.3, y - ny * sc * 0.3, z - T.wn[k + 2] * sc * 0.3, sc, q[0], q[1], q[2], q[3], 1, rnd(), sc > 1.15 ? 0 : 96, 0);
+    const ci = (sc > 1.15 ? 3 : 0) + (rnd() * 3 | 0), cl = chunks[ci][cellOf(x, z)];
+    if (sc > 0.5) (sc > 1.15 ? addCol : addHit)(x - T.wn[k] * sc * 0.3, y - ny * sc * 0.3, z - T.wn[k + 2] * sc * 0.3, sc * (sc > 1.15 ? 0.9 : 0.85), [1, ci, cellOf(x, z), cl.length / 12, sc]);
+    cl.push(x - T.wn[k] * sc * 0.3, y - ny * sc * 0.3, z - T.wn[k + 2] * sc * 0.3, sc, q[0], q[1], q[2], q[3], 1, rnd(), sc > 1.15 ? 0 : 96, 0);
   }
   rseed(11);
   for (let i = 0; i < 170000; i++) { // pebbles and rubble on the sea floor
@@ -311,7 +316,7 @@ function makeWorld(D, T, flyPts, POSES) {
   solid(11, 59.5, -23, 6, 1, qMul(qAxis(0, 1, 0, -PI / 2), qMul(qAxis(0, 0, 1, -0.1), qAxis(1, 0, 0, 0.32))), 3, 0.5, 1, 0); // ship hull
   { // torpedoes burst on the fluke and the ship too: chains of spheres in their own coordinates (x, y, z, radius), turned and moved like the meshes
     const qr = (q, v) => { const cx = q[1] * v[2] - q[2] * v[1], cy = q[2] * v[0] - q[0] * v[2], cz = q[0] * v[1] - q[1] * v[0], wx = cx + q[3] * v[0], wy = cy + q[3] * v[1], wz = cz + q[3] * v[2]; return [v[0] + 2 * (q[1] * wz - q[2] * wy), v[1] + 2 * (q[2] * wx - q[0] * wz), v[2] + 2 * (q[0] * wy - q[1] * wx)]; };
-    const put = (pts, q, o) => { for (const p of pts) { const w = qr(q, p); hit.push(o[0] + w[0], o[1] + w[1], o[2] + w[2], p[3]); } };
+    const put = (pts, q, o) => { for (const p of pts) { const w = qr(q, p); addHit(o[0] + w[0], o[1] + w[1], o[2] + w[2], p[3], NOREF); } };
     put([[0, -1.2, 3.2, 1.2], [0, 1.8, 2.35, 1], [0, 4.6, 1, 0.8], [0, 6.8, 0.1, 0.7], [1.9, 7.9, 0, 1], [3.9, 8.8, -0.1, 0.9], [5.7, 9.8, -0.25, 0.65], [7, 11.2, -0.4, 0.45], [-1.7, 8.3, 0.05, 1], [-3.3, 9.7, -0.05, 0.9], [-4.7, 11.2, -0.2, 0.65], [-5.6, 12.9, -0.4, 0.45]],
       qMul(qAxis(0, 1, 0, 1.2), qMul(qAxis(0, 0, 1, 0.16), qAxis(1, 0, 0, -0.3))), [-5, gy(-5, -4) - 0.6, -4]);
     const hull = []; for (let x = -16; x <= 17; x += 3.5) hull.push([x, -3.2, 0, 4.6 * (1 - 0.55 * pow(abs(x) / 17, 2))]);
@@ -345,6 +350,11 @@ function makeWorld(D, T, flyPts, POSES) {
       if (Dw(x, y, z) > -5 || hypot(x, z) > 140 || y > -6) continue;
       n--; jelly.push(x, y, z, rr(2, 6), rnd() * TAU, rr(0.03, 0.08), rr(0.7, 2.2), rnd());
     }
+  }
+
+  for (let c = 0; c < 9; c++) { // blooms in the open sea
+    const bx = rr(140, 400), bz = rr(-130, 130), by = rr(-40, -10);
+    for (let n = 6 + rnd() * 6 | 0; n--;) jelly.push(bx + rr(-12, 12), by + rr(-6, 6), bz + rr(-12, 12), rr(2, 6), rnd() * TAU, rr(0.03, 0.08), rr(0.8, 2.4), rnd());
   }
 
   // --- pack leaves (36 bytes: 8 floats + 4 unorm8), sorted by culling cell
@@ -393,12 +403,19 @@ function makeWorld(D, T, flyPts, POSES) {
   const SCH = [[-2, -36, -10, 15, 520, 0.3, 1, 0.945], [8, -30, -70, 22, 420, 0.32, -1], [48, -30, 14, 18, 360, 0.3, 1], [-58, -30, -8, 11, 420, 0.28, -1, 0.3], [8, -36, 84, 16, 320, 0.28, 1],
     [-90, -28, -70, 25, 300, 0.3, 1], [95, -30, 70, 25, 300, 0.3, -1], [0, -22, 20, 30, 380, 0.34, -1], [-30, -30, -100, 18, 300, 0.3, 1], [16, -36, 30, 12, 300, 0.3, 1], [-48, -34, -58, 12, 300, 0.3, -1], [-45, -35, 38, 14, 320, 0.3, 1],
     [0, -24, -55, 16, 600, 0.18, 1], [-20, -28, -80, 20, 400, 0.22, -1], [72, -30, -26, 20, 420, 0.3, 1], [-60, -26, -45, 12, 350, 0.25, 1], [-60, -30, 50, 14, 350, 0.27, -1], [6, -30, 95, 16, 380, 0.26, 1], [26, -28, 68, 10, 260, 0.3, -1],
-    [8, -22, -95, 12, 60, 0.55, 1], [-10, -26, 40, 12, 50, 0.6, -1], [60, -24, 10, 10, 40, 0.55, 1]];
+    [8, -22, -95, 12, 60, 0.55, 1], [-10, -26, 40, 12, 50, 0.6, -1], [60, -24, 10, 10, 40, 0.55, 1],
+    // the open sea
+    [200, -28, -60, 30, 500, 0.3, 1], [260, -35, 40, 36, 600, 0.28, -1], [320, -22, -20, 40, 500, 0.32, 1], [380, -30, 70, 30, 400, 0.3, -1], [230, -18, 100, 26, 300, 0.34, 1],
+    [300, -40, -90, 34, 350, 0.3, -1], [180, -30, 0, 24, 400, 0.26, 1], [280, -25, 10, 25, 60, 0.6, 1], [340, -35, -60, 30, 50, 0.65, -1]];
   // per fish: position + orbit radius, random id, speed, size, school id, and three hash values (also used on the CPU to find the fish)
   const hsJ = (x) => { const v = Math.sin(x * 127.1) * 43758.5453; return v - floor(v); };
   for (const s of SCH) { const ss = s[7] === undefined ? rnd() : s[7]; for (let i = 0; i < s[4]; i++) { const r = rnd(); fish.push(s[0], s[1], s[2], s[3], r, s[6] * 1.9 / s[3], s[5], ss, hsJ(r), hsJ(r + 0.37), hsJ(r + 0.71), 0); } }
   const mantas = [];
-  for (const m of [[1, -28, 3.5, 14, 3.012, 0.085, 3.6, 0.1], [49, -31, 24.5, 5, 0.029, -0.08, 3.7, 0.4], [0, -14, -80, 34, 0.3, 0.06, 5.2, 0.7], [-50, -18, 20, 26, 5, -0.075, 3.8, 0.55], [10, -16, 86, 26, 2.2, 0.07, 4.4, 0.85], [20, -11, -20, 46, 4.2, -0.045, 5.6, 0.25]]) mantas.push(...m);
+  for (const m of [[1, -28, 3.5, 14, 3.012, 0.085, 3.6, 0.1], [49, -31, 24.5, 5, 0.029, -0.08, 3.7, 0.4], [0, -14, -80, 34, 0.3, 0.06, 5.2, 0.7], [-50, -18, 20, 26, 5, -0.075, 3.8, 0.55], [10, -16, 86, 26, 2.2, 0.07, 4.4, 0.85], [20, -11, -20, 46, 4.2, -0.045, 5.6, 0.25],
+    // more of them: two over the reef, six in the open sea (cx, cy, cz, orbit radius, phase, speed, size, seed)
+    [-30, -22, 70, 28, 1.9, 0.06, 4.0, 0.45], [60, -26, -70, 26, 5.9, -0.055, 4.8, 0.22],
+    [200, -18, -80, 50, 1.0, 0.04, 5.0, 0.15], [250, -25, 30, 60, 2.5, -0.035, 4.6, 0.35], [300, -15, -30, 45, 4.0, 0.05, 5.8, 0.6],
+    [350, -30, 60, 55, 0.7, -0.04, 4.2, 0.8], [180, -22, 10, 40, 5.1, 0.06, 3.9, 0.92], [140, -28, -60, 30, 3.3, -0.05, 3.4, 0.05]]) mantas.push(...m);
 
   // --- drifting particles
   const snow = new Float32Array(9000 * 4);
@@ -415,7 +432,18 @@ function makeWorld(D, T, flyPts, POSES) {
     for (let c = 0; c < nCells; c++) { const a = L[c]; for (let i = 0; i < a.length; i += 12) { for (let j = 0; j < 12; j++) data[k++] = a[i + j]; lo[c] = min(lo[c], a[i + 1] - 3); hi[c] = max(hi[c], a[i + 1] + 3); } }
     return { data, n, start, lo, hi };
   };
-  return { gy, glints: new Float32Array(glints), chunks: chunks.map(packC), props: props.map(packC), big: pack(big), bigF: pack(big, 2, 1.5), small: pack(small), solids: { data: new Float32Array(sol.data), ranges: sol.ranges }, bubbles: new Float32Array(bubbles), volD, gm, fish: new Float32Array(fish), mantas: new Float32Array(mantas), jelly: new Float32Array(jelly), col: new Float32Array(col), hit: new Float32Array(hit), kraken: new Float32Array([0, -20, -10, 11, 1.2, 0.08, 3.6, 0.3]), snow };
+  const chunkP = chunks.map(packC), solidsP = { data: new Float32Array(sol.data), ranges: sol.ranges };
+  // collider -> GPU instance: buffer (0: solids, 1 + n: chunk set n), index in it, original scale
+  const resolve = (ref) => {
+    const n = ref.length / 5, B = new Int32Array(n), I = new Int32Array(n), C = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const k = ref[i * 5]; B[i] = -1; if (k < 0) continue;
+      C[i] = ref[i * 5 + 4];
+      if (k === 0) { B[i] = 0; I[i] = sol.ranges[ref[i * 5 + 1]][0] + ref[i * 5 + 2]; } else { B[i] = 1 + ref[i * 5 + 1]; I[i] = chunkP[ref[i * 5 + 1]].start[ref[i * 5 + 2]] + ref[i * 5 + 3]; }
+    }
+    return [B, I, C];
+  };
+  return { colR: resolve(cref), hitR: resolve(href), gy, glints: new Float32Array(glints), chunks: chunkP, props: props.map(packC), big: pack(big), bigF: pack(big, 2, 1.5), small: pack(small), solids: solidsP, bubbles: new Float32Array(bubbles), volD, gm, fish: new Float32Array(fish), mantas: new Float32Array(mantas), jelly: new Float32Array(jelly), col: new Float32Array(col), hit: new Float32Array(hit), kraken: new Float32Array([0, -20, -10, 11, 1.2, 0.08, 3.6, 0.3, 260, -30, -60, 40, 2.0, 0.05, 3.2, 0.55, 330, -45, 70, 50, 4.4, -0.04, 5.0, 0.7, 200, -25, 90, 30, 0.6, 0.06, 4.2, 0.85]), snow };
 }
 const fract = (x) => x - floor(x);
 

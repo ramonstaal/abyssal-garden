@@ -31,6 +31,10 @@ Nothing to install, and it works offline. It needs a browser with **WebGPU**. If
 
 ![The purple grotto](.github/screenshots/purple-grotto.jpg)
 
+## The map
+
+The coral reef is a circle of about 300 m with a wall around it. On its east side the seabed falls away into **open sea**: a strip of deep water without a floor, home to schools of fish, jellyfish and the biggest mantas and krakens. The edges of the world are invisible, so you simply stop swimming. The **minimap** in the top left corner shows the terrain, you (the arrow), the mantas (violet) and krakens (pink, orange when angry) and your torpedoes.
+
 ## Controls
 
 | | Keyboard & mouse |

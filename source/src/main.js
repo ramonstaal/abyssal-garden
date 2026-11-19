@@ -81,6 +81,7 @@ const vbSolid = { arrayStride: 16, attributes: [A(0, 0, 'float32x3'), A(1, 12, '
 const ibSolid = { arrayStride: 48, stepMode: 'instance', attributes: [A(2, 0, 'float32x4'), A(3, 16, 'float32x4'), A(4, 32, 'float32x4')] };
 const ibLeaf = { arrayStride: 36, stepMode: 'instance', attributes: [A(0, 0, 'float32x4'), A(1, 16, 'float32x4'), A(2, 32, 'unorm8x4')] };
 const ibFishL = { arrayStride: 48, stepMode: 'instance', attributes: [A(2, 0, 'float32x4'), A(3, 16, 'float32x4'), A(4, 32, 'float32x4')] };
+const ibCrea = { arrayStride: 48, stepMode: 'instance', attributes: [A(2, 0, 'float32x4'), A(3, 16, 'float32x4'), A(4, 32, 'float32x4')] };
 const ibAnim = { arrayStride: 32, stepMode: 'instance', attributes: [A(2, 0, 'float32x4'), A(3, 16, 'float32x4')] };
 const ibBub = { arrayStride: 32, stepMode: 'instance', attributes: [A(0, 0, 'float32x4'), A(1, 16, 'float32x4')] };
 const ibSnow = { arrayStride: 16, stepMode: 'instance', attributes: [A(0, 0, 'float32x4')] };
@@ -104,7 +105,7 @@ const pLeaf5 = scenePipe(mLeaf, 'vs', 'fs', [ibLeaf], { strip: true, constants: 
 const pLeafS = scenePipe(mLeaf, 'vs', 'fs', [ibLeaf], { strip: true, constants: { ROWS: 3, FAR: 70 } });
 const pLeafF = scenePipe(mLeaf, 'vs', 'fs', [ibLeaf], { strip: true, constants: { ROWS: 3 } });
 const pFish = scenePipe(mAnim, 'vsFish', 'fsFish', [vbSolid, ibFishL]);
-const pManta = scenePipe(mAnim, 'vsManta', 'fsManta', [vbSolid, ibAnim]), pKraken = scenePipe(mAnim, 'vsKraken', 'fsKraken', [vbSolid, ibAnim]), pJelly = scenePipe(mAnim, 'vsJelly', 'fsJelly', [vbSolid, ibAnim]), pTorp = scenePipe(mAnim, 'vsTorp', 'fsTorp', [vbSolid, ibAnim]);
+const pManta = scenePipe(mAnim, 'vsManta', 'fsManta', [vbSolid, ibCrea]), pKraken = scenePipe(mAnim, 'vsKraken', 'fsKraken', [vbSolid, ibCrea]), pJelly = scenePipe(mAnim, 'vsJelly', 'fsJelly', [vbSolid, ibAnim]), pTorp = scenePipe(mAnim, 'vsTorp', 'fsTorp', [vbSolid, ibAnim]);
 const pSurf = scenePipe(mSurf, 'vs', 'fs', [], { strip: true }), pBack = scenePipe(mSurf, 'vsB', 'fsB', [], { strip: true });
 const pBub = scenePipe(mSpr, 'vsBub', 'fsBub', [ibBub], { strip: true, blend: { color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } } });
 const ADD = { color: { srcFactor: 'one', dstFactor: 'one' }, alpha: { srcFactor: 'one', dstFactor: 'one' } };
@@ -196,6 +197,36 @@ let CG = new Int8Array(64 * 65534);
 }
 await say('Carving canyons…', 0.32, 400);
 const T = buildTerrain(D);
+// ---------------------------------------------------------------- minimap
+// x from -175 to 425, z from -175 to 175, 2 m a pixel; rock shaded by the height of its highest point, the part you can't swim to dimmed
+const MMW = 300, MMH = 175, MX0 = -175, MZ0 = -175, MSC = 2;
+const inPlay = (x, z) => x >= 125 ? x <= 420 && abs(z) <= 150 : x * x + z * z <= 22500;
+const mmBase = document.createElement('canvas'); mmBase.width = MMW; mmBase.height = MMH;
+{
+  const im = mmBase.getContext('2d'), id = im.createImageData(MMW, MMH), px = id.data;
+  for (let j = 0; j < MMH; j++) for (let i = 0; i < MMW; i++) {
+    const x = MX0 + (i + 0.5) * MSC, z = MZ0 + (j + 0.5) * MSC, ix = round((x - OX) / VS), iz = round((z - OZ) / VS);
+    let h = -99;
+    if (ix > 0 && ix < NX - 1 && iz > 0 && iz < NZ - 1) for (let y = NY - 2; y >= 0; y--) if (D[ix + NX * (y + NY * iz)] > 0) { h = OY + y * VS; break; }
+    const t = h < -90 ? -1 : clamp((h + 50) / 48, 0, 1), play = inPlay(x, z) ? 1 : 0.4, o = (i + MMW * j) * 4;
+    px[o] = (t < 0 ? 8 : 24 + 120 * t) * play; px[o + 1] = (t < 0 ? 52 : 70 + 130 * t) * play; px[o + 2] = (t < 0 ? 78 : 84 + 90 * t) * play; px[o + 3] = 255;
+  }
+  im.putImageData(id, 0, 0);
+}
+const mmCtx = $('mm').getContext('2d');
+const mmX = (x) => (x - MX0) / MSC, mmZ = (z) => (z - MZ0) / MSC;
+function drawMap() {
+  const c = mmCtx; c.drawImage(mmBase, 0, 0);
+  for (let k = 0; k < NC; k++) { // creatures: mantas violet, krakens pink, angry ones orange
+    const o = k * 16; if (!CP[o + C_ALIVE]) continue;
+    c.fillStyle = CP[o + C_AN] > 0.5 ? '#ff5a3c' : k >= NM ? '#ff8aa0' : '#b9a0ff';
+    c.beginPath(); c.arc(mmX(CP[o]), mmZ(CP[o + 2]), k >= NM ? 3.2 : 2, 0, 6.283); c.fill();
+  }
+  c.fillStyle = '#fff';
+  for (let k = 0; k < TMAX; k++) if (TL[k]) c.fillRect(mmX(TP[k * 10]) - 1, mmZ(TP[k * 10 + 2]) - 1, 2, 2);
+  const px = mmX(F[CX]), pz = mmZ(F[CZ]), a = atan2(F[FZ], F[FX]); // you: an arrow along your heading
+  c.fillStyle = '#7ff3ff'; c.beginPath(); c.moveTo(px + cos(a) * 6, pz + sin(a) * 6); c.lineTo(px + cos(a + 2.5) * 4.5, pz + sin(a + 2.5) * 4.5); c.lineTo(px + cos(a - 2.5) * 4.5, pz + sin(a - 2.5) * 4.5); c.closePath(); c.fill();
+}
 
 // preset viewpoints (position, look-at), keys 1-6; the world generator dresses the scene around them
 const POSES = [
@@ -238,7 +269,8 @@ const FLYN = FLY.length / 6, FLYT = 60, LUTN = 1024, flyLUT = new Float32Array(L
 const flyPts = [];
 // per-frame float state lives in one preallocated array, so the frame loop allocates no heap numbers
 const F = new Float64Array(32), P6 = new Float64Array(6);
-const CX = 0, CY = 1, CZ = 2, YAW = 3, PIT = 4, FX = 5, FY = 6, FZ = 7, RX = 8, RZ = 9, UX = 10, UY = 11, UZ = 12, VX = 13, VY = 14, VZ = 15, TIME = 16, FLT = 17, LAST = 18, GPU = 19, HUDT = 20, SPL = 21, MX = 22, MY = 23, MZ = 24;
+const CX = 0, CY = 1, CZ = 2, YAW = 3, PIT = 4, FX = 5, FY = 6, FZ = 7, RX = 8, RZ = 9, UX = 10, UY = 11, UZ = 12, VX = 13, VY = 14, VZ = 15, TIME = 16, FLT = 17, LAST = 18, GPU = 19, HUDT = 20, SPL = 21, MX = 22, MY = 23, MZ = 24, IMP = 25, HP = 26, MMT = 27; // MMT: time to the next minimap update // IMP: the hardest hit into rock this frame (m/s), HP: health, 0-100
+F[HP] = 100;
 // aim the camera from P6 = position + look-at point
 function aim() {
   const dx = P6[3] - P6[0], dy = P6[4] - P6[1], dz = P6[5] - P6[2];
@@ -296,10 +328,10 @@ const solidData = new Float32Array((nSolid + 1) * 12); solidData.set(Wd.solids.d
 const ibSolids = buf(solidData, BU.VERTEX);
 const ibChunk = Wd.chunks.map((c) => buf(c.data, BU.VERTEX)), ibProp = Wd.props.map((c) => buf(c.data, BU.VERTEX));
 const ibBig = buf(new Uint8Array(Wd.big.buf), BU.VERTEX), ibBigF = buf(new Uint8Array(Wd.bigF.buf), BU.VERTEX), ibSmall = buf(new Uint8Array(Wd.small.buf), BU.VERTEX);
-const ibFish = buf(Wd.fish, BU.VERTEX), ibManta = buf(Wd.mantas, BU.VERTEX), ibBubbles = buf(Wd.bubbles, BU.VERTEX), ibSnowB = buf(Wd.snow, BU.VERTEX);
+const ibFish = buf(Wd.fish, BU.VERTEX), ibBubbles = buf(Wd.bubbles, BU.VERTEX), ibSnowB = buf(Wd.snow, BU.VERTEX);
 const ibGl = buf(Wd.glints, BU.VERTEX), nGl = Wd.glints.length / 8;
 const nFish = Wd.fish.length / 12, nManta = Wd.mantas.length / 8, nBub = Wd.bubbles.length / 8, nSnow = Wd.snow.length / 4;
-const MANTA = meshes[12], FISH = meshes[13], KRAKEN = meshes[26], ibKraken = buf(Wd.kraken, BU.VERTEX), JELLY = meshes[27], ibJelly = buf(Wd.jelly, BU.VERTEX), nJelly = Wd.jelly.length / 8, TORP = meshes[28];
+const MANTA = meshes[12], FISH = meshes[13], KRAKEN = meshes[26], JELLY = meshes[27], ibJelly = buf(Wd.jelly, BU.VERTEX), nJelly = Wd.jelly.length / 8, TORP = meshes[28];
 // Sphere colliders in an 8 m grid over x, z (mkGrid: cell starts and sphere indices). SPH: the large rocks the camera can't enter
 // (the terrain itself is in the collision field below); HIT: more things (small rocks, sponges, corals, the ship, the fluke) only torpedoes burst on.
 const gcell = (x, z) => clamp(floor((x + 192) / 8), 0, 47) + 48 * clamp(floor((z + 192) / 8), 0, 47);
@@ -314,6 +346,15 @@ const SPH = Wd.col, [GS, GI] = mkGrid(SPH), HIT = Wd.hit, [HS, HI] = mkGrid(HIT)
 // the fish schools (consecutive instances sharing a centre and orbit), the mantas, the kraken and the jellyfish, for torpedo hits
 const FI = Wd.fish, MT = Wd.mantas, KR = Wd.kraken, JL = Wd.jelly, SCHL = [];
 for (let i = 0; i < FI.length; i += 12) { const L = SCHL[SCHL.length - 1]; if (L && L[0] === FI[i] && L[1] === FI[i + 1] && L[2] === FI[i + 2] && L[3] === FI[i + 3]) L[5]++; else SCHL.push([FI[i], FI[i + 1], FI[i + 2], FI[i + 3], i, 1]); }
+const FD = new Uint8Array(FI.length / 12), JD = new Uint8Array(JL.length / 8), FP = new Float64Array(3); // 1: that fish or jellyfish has been blown up
+// the position of the fish at float index i of its school L, as vsFish computes it
+function fishPos(i, L, t) {
+  const R = L[3], s = FI[i + 4], sp = FI[i + 5], ta = t * sp + FI[i + 7] * 6.3 + (FI[i + 8] - 0.5) * (26 / R), ph = FI[i + 7] * 17;
+  let tx = -R * sin(ta), ty = 6.6 * cos(3 * ta + ph), tz = 0.6 * R * cos(ta); const l = hypot(tx, ty, tz) * Math.sign(sp); tx /= l; ty /= l; tz /= l;
+  let sx = tz, sz = -tx; const sl = hypot(sx, sz) || 1; sx /= sl; sz /= sl; // S = normalize(cross(up, T)), Up = cross(T, S)
+  const ux = ty * sz, uy = tz * sx - tx * sz, uz = -ty * sx, a = (FI[i + 9] - 0.5) * 5 + sin(t * 0.6 + s * 40) * 0.5, b = (FI[i + 10] - 0.5) * 3.2 + cos(t * 0.5 + s * 31) * 0.4;
+  FP[0] = L[0] + R * cos(ta) + sx * a + ux * b; FP[1] = L[1] + 2.2 * sin(3 * ta + ph) + uy * b; FP[2] = L[2] + 0.6 * R * sin(ta) + sz * a + uz * b;
+}
 Q.writeTexture({ texture: tVol }, Wd.volD, { bytesPerRow: NX, rowsPerImage: NY / 2 }, [NX / 2, NY / 2, NZ / 2]);
 Q.writeTexture({ texture: tMap }, Wd.gm, { bytesPerRow: 2048 }, [512, 512]);
 
@@ -488,8 +529,8 @@ function render() {
     drawCells(r, Wd.props[i].start, Wd.props[i].lo, Wd.props[i].hi, 3, meshes[4 + i], 0, 0, lod ? 6 : 110);
     if (lod) drawCells(r, Wd.props[i].start, Wd.props[i].lo, Wd.props[i].hi, 3, meshes[18 + i], 0, 6, 110);
   }
-  r.setPipeline(pManta); r.setVertexBuffer(1, ibManta); r.drawIndexed(MANTA.ib.length, nManta, MANTA.i0, MANTA.v0, 0);
-  r.setPipeline(pKraken); r.setVertexBuffer(1, ibKraken); r.drawIndexed(KRAKEN.ib.length, 1, KRAKEN.i0, KRAKEN.v0, 0);
+  r.setPipeline(pManta); r.setVertexBuffer(1, bufCrea); r.drawIndexed(MANTA.ib.length, nManta, MANTA.i0, MANTA.v0, 0);
+  r.setPipeline(pKraken); r.setVertexBuffer(1, bufCrea); r.drawIndexed(KRAKEN.ib.length, NK, KRAKEN.i0, KRAKEN.v0, nManta);
   if (nTorp) { r.setPipeline(pTorp); r.setVertexBuffer(1, ibTorp); r.drawIndexed(TORP.ib.length, nTorp, TORP.i0, TORP.v0, 0); }
   r.setPipeline(pJelly); r.setVertexBuffer(1, ibJelly); r.drawIndexed(JELLY.ib.length, nJelly, JELLY.i0, JELLY.v0, 0);
   r.setPipeline(pFish); r.setVertexBuffer(1, ibFish); r.drawIndexed(FISH.ib.length, nFish, FISH.i0, FISH.v0, 0);
@@ -541,30 +582,19 @@ function gridHit(S, st, ix, px, py, pz, pad) {
   const gx = clamp(floor((px + 192) / 8), 0, 47), gz = clamp(floor((pz + 192) / 8), 0, 47);
   for (let cz = max(gz - 1, 0); cz <= min(gz + 1, 47); cz++) for (let cx = max(gx - 1, 0); cx <= min(gx + 1, 47); cx++) {
     const c = cx + 48 * cz;
-    for (let j = st[c]; j < st[c + 1]; j++) { const o = ix[j] * 4, dx = px - S[o], dy = py - S[o + 1], dz = pz - S[o + 2], r = S[o + 3] + pad; if (dx * dx + dy * dy + dz * dz < r * r) return true; }
+    for (let j = st[c]; j < st[c + 1]; j++) { const o = ix[j] * 4, dx = px - S[o], dy = py - S[o + 1], dz = pz - S[o + 2], r = S[o + 3] + pad; if (S[o + 3] > 0 && dx * dx + dy * dy + dz * dz < r * r) return true; }
   }
   return false;
 }
 // is there rock (terrain or a large rock) at this point?
 const solidAt = (px, py, pz) => sdf(px, py, pz) > 0 || gridHit(SPH, GS, GI, px, py, pz, 0);
 // the animated things, at the shaders' positions (the same formulas as vsFish, vsManta, vsKraken and vsJelly)
+let hitC = -1; // the creature (0-5 manta, 6 kraken) the last dynHit found
 function dynHit(px, py, pz) {
-  const t = F[TIME];
-  for (let i = 0; i < MT.length; i += 8) { // mantas: wide and flat
-    const R = MT[i + 3], ta = t * MT[i + 5] + MT[i + 4], sz = MT[i + 6], dx = px - (MT[i] + R * cos(ta)), dy = py - (MT[i + 1] + 2.5 * sin(2 * ta + MT[i + 7])), dz = pz - (MT[i + 2] + 0.75 * R * sin(ta)), w = sz * 0.8 + 0.3;
-    if (dx * dx + dz * dz < w * w && abs(dy) < sz * 0.25 + 0.4) return true;
-  }
-  for (let i = 0; i < KR.length; i += 8) { // the kraken: a chain of spheres from the mantle back along the arms
-    const R = KR[i + 3], ta = t * KR[i + 5] + KR[i + 4], sz = KR[i + 6], ph = 2 * ta + KR[i + 7] * 9;
-    const cx = KR[i] + R * cos(ta), cy = KR[i + 1] + 3 * sin(ph), cz = KR[i + 2] + 0.75 * R * sin(ta);
-    let tx = -R * sin(ta), ty = 6 * cos(ph), tz = 0.75 * R * cos(ta); const l = hypot(tx, ty, tz) * Math.sign(KR[i + 5]); tx /= l; ty /= l; tz /= l;
-    for (let k = 0; k < 5; k++) {
-      const zz = (k === 0 ? 1.8 : k === 1 ? 0.3 : k === 2 ? -1.5 : k === 3 ? -3.5 : -6) * sz, r = (k === 0 ? 0.8 : k === 1 ? 0.7 : k === 2 ? 0.6 : k === 3 ? 0.45 : 0.3) * sz + 0.3;
-      const dx = px - (cx + tx * zz), dy = py - (cy + ty * zz), dz = pz - (cz + tz * zz);
-      if (dx * dx + dy * dy + dz * dz < r * r) return true;
-    }
-  }
+  const t = F[TIME]; hitC = -1;
+  for (let c = 0; c < NC; c++) if (CP[c * 16 + C_ALIVE] && cHit(c, px, py, pz, 0.3)) { hitC = c; return true; }
   for (let i = 0; i < JL.length; i += 8) { // jellyfish: the bell
+    if (JD[i / 8]) continue;
     const ta = t * JL[i + 5] + JL[i + 4], R = JL[i + 3], sz = JL[i + 6], r = sz * 0.95 + 0.3;
     const dx = px - (JL[i] + R * sin(ta)), dy = py - (JL[i + 1] + 1.5 * sin(t * 0.5 + JL[i + 4] * 3) + 2 * sin(ta * 0.7) + 0.2 * sz), dz = pz - (JL[i + 2] + R * cos(ta * 0.8));
     if (dx * dx + dy * dy + dz * dz < r * r) return true;
@@ -573,11 +603,9 @@ function dynHit(px, py, pz) {
     const R = L[3];
     if (abs(px - L[0]) > R + 5 || abs(pz - L[2]) > 0.6 * R + 5 || abs(py - L[1]) > 7) continue;
     for (let i = L[4], e = i + L[5] * 12; i < e; i += 12) {
-      const s = FI[i + 4], sp = FI[i + 5], ta = t * sp + FI[i + 7] * 6.3 + (FI[i + 8] - 0.5) * (26 / R), ph = FI[i + 7] * 17;
-      let tx = -R * sin(ta), ty = 6.6 * cos(3 * ta + ph), tz = 0.6 * R * cos(ta); const l = hypot(tx, ty, tz) * Math.sign(sp); tx /= l; ty /= l; tz /= l;
-      let sx = tz, sz = -tx; const sl = hypot(sx, sz) || 1; sx /= sl; sz /= sl; // S = normalize(cross(up, T)), Up = cross(T, S)
-      const ux = ty * sz, uy = tz * sx - tx * sz, uz = -ty * sx, a = (FI[i + 9] - 0.5) * 5 + sin(t * 0.6 + s * 40) * 0.5, b = (FI[i + 10] - 0.5) * 3.2 + cos(t * 0.5 + s * 31) * 0.4;
-      const dx = px - (L[0] + R * cos(ta) + sx * a + ux * b), dy = py - (L[1] + 2.2 * sin(3 * ta + ph) + uy * b), dz = pz - (L[2] + 0.6 * R * sin(ta) + sz * a + uz * b);
+      if (FD[i / 12]) continue;
+      fishPos(i, L, t);
+      const dx = px - FP[0], dy = py - FP[1], dz = pz - FP[2];
       if (dx * dx + dy * dy + dz * dz < 0.64) return true;
     }
   }
@@ -600,18 +628,19 @@ function collide() {
       if (l < 0.075) break; // flat: deep in rock
       gx /= l; gy /= l; gz /= l; const vn = F[VX] * gx + F[VY] * gy + F[VZ] * gz;
       F[CX] -= gx * s; F[CY] -= gy * s; F[CZ] -= gz * s;
-      if (vn > 0) { F[VX] -= gx * vn; F[VY] -= gy * vn; F[VZ] -= gz * vn; }
+      if (vn > 0) { if (vn > F[IMP]) F[IMP] = vn; F[VX] -= gx * vn; F[VY] -= gy * vn; F[VZ] -= gz * vn; }
     }
     // large rocks: push the camera out of the spheres nearby and drop the velocity into them
     const sx = clamp(floor((F[CX] + 192) / 8), 0, 47), sz = clamp(floor((F[CZ] + 192) / 8), 0, 47);
     for (let cz = max(sz - 1, 0); cz <= min(sz + 1, 47); cz++) for (let cx = max(sx - 1, 0); cx <= min(sx + 1, 47); cx++) {
       const c = cx + 48 * cz;
       for (let j = GS[c]; j < GS[c + 1]; j++) {
-        const o = GI[j] * 4, dx = F[CX] - SPH[o], dy = F[CY] - SPH[o + 1], dz = F[CZ] - SPH[o + 2], R = SPH[o + 3] + CR, d2 = dx * dx + dy * dy + dz * dz;
+        const o = GI[j] * 4; if (SPH[o + 3] <= 0) continue;
+        const dx = F[CX] - SPH[o], dy = F[CY] - SPH[o + 1], dz = F[CZ] - SPH[o + 2], R = SPH[o + 3] + CR, d2 = dx * dx + dy * dy + dz * dz;
         if (d2 >= R * R) continue;
         const d = sqrt(d2) || 1e-3, nx = dx / d, ny = dy / d, nz = dz / d, vn = F[VX] * nx + F[VY] * ny + F[VZ] * nz;
         F[CX] += nx * (R - d); F[CY] += ny * (R - d); F[CZ] += nz * (R - d);
-        if (vn < 0) { F[VX] -= nx * vn; F[VY] -= ny * vn; F[VZ] -= nz * vn; }
+        if (vn < 0) { if (-vn > F[IMP]) F[IMP] = -vn; F[VX] -= nx * vn; F[VY] -= ny * vn; F[VZ] -= nz * vn; }
       }
     }
   }
@@ -635,15 +664,181 @@ const bub = (x, y, z, s, rise, wob) => {
   const o = TRI * 8; TB[o] = x; TB[o + 1] = y; TB[o + 2] = z; TB[o + 3] = s; TB[o + 4] = F[TIME]; TB[o + 5] = rise; TB[o + 6] = Math.random() * 6.3; TB[o + 7] = wob;
   TRI = (TRI + 1) % NTR; trN++;
 };
+// ---------------------------------------------------------------- health
+// Hitting rock costs 0.15 * (speed into the rock - 1)^2, at most 40 a hit (a gentle bump is nothing, a sprint into a wall is a lot); a
+// torpedo bursting within 12 m costs up to 60, falling off with the square of the distance. Health comes back slowly (2 a second).
+// At 0 you start over at the first viewpoint.
+const hpBar = $('hp').firstChild;
+let hpShown = 100;
+const showHP = () => { hpShown = floor(F[HP]); hpBar.style.transform = `scaleX(${max(F[HP], 0) / 100})`; hpBar.style.background = `hsl(${max(F[HP], 0) * 1.2} 80% 50%)`; };
+function hurt(d) {
+  if (d <= 0.05 || menu) return;
+  F[HP] -= d; showHP();
+  $('dm').animate({ opacity: [min(0.85, 0.2 + d / 30), 0] }, { duration: 700, easing: 'ease-out' });
+  if (F[HP] > 0) return;
+  F[HP] = 100; showHP(); TL.fill(0);
+  for (let c = 0; c < NC; c++) CP[c * 16 + C_UNTIL] = 0;
+  F[VX] = F[VY] = F[VZ] = 0; lkx = lky = l2x = l2y = 0; lookAt(...POSES[0]);
+  $('dd').animate({ opacity: [1, 1, 0] }, { duration: 2400 });
+}
+// ---------------------------------------------------------------- crumbling rocks
+// A torpedo bursting on rock shrinks the loose rocks within 2.5 m of the burst (less for big ones, and the closer the more); one that gets
+// too small crumbles away. The rock's instance scale is rewritten on the GPU (a few frames of easing), and its collision sphere shrinks with it.
+// (The terrain itself stays, and the baked shadow of a vanished rock stays too.)
+const RBUF = [ibSolids, ...ibChunk];
+const RK = [[SPH, GS, GI, ...Wd.colR], [HIT, HS, HI, ...Wd.hitR]].map(([S, st, ix, B, I, C]) => ({ S, st, ix, B, I, C, F: new Float32Array(S.length / 4).fill(1), R: S.slice() }));
+const TWN = 48, TWL = new Uint8Array(TWN), TWI = new Int32Array(TWN), TWC = new Float32Array(TWN), SC1 = new Float32Array(1);
+let nTw = 0;
+const setScale = (L, i, v) => { SC1[0] = L.C[i] * v; Q.writeBuffer(RBUF[L.B[i]], (L.I[i] * 12 + 3) * 4, SC1, 0, 1); };
+function crumble(px, py, pz) {
+  const gx = clamp(floor((px + 192) / 8), 0, 47), gz = clamp(floor((pz + 192) / 8), 0, 47);
+  for (let l = 0; l < 2; l++) {
+    const L = RK[l], S = L.S;
+    for (let cz = max(gz - 1, 0); cz <= min(gz + 1, 47); cz++) for (let cx = max(gx - 1, 0); cx <= min(gx + 1, 47); cx++) {
+      const c = cx + 48 * cz;
+      for (let j = L.st[c]; j < L.st[c + 1]; j++) {
+        const i = L.ix[j], o = i * 4, r = S[o + 3];
+        if (L.B[i] < 0 || r <= 0) continue;
+        const dx = S[o] - px, dy = S[o + 1] - py, dz = S[o + 2] - pz, d = sqrt(dx * dx + dy * dy + dz * dz) - r;
+        if (d > 2.5) continue;
+        const sc0 = L.C[i], f = clamp(0.4 + 0.12 * sc0, 0.4, 0.85), old = L.F[i];
+        let g = old * (f + (1 - f) * clamp(d / 2.5, 0, 1));
+        const gone = g * sc0 < 0.25; if (gone) g = 0;
+        L.F[i] = g; S[o + 3] = L.R[o + 3] * g;
+        chips(S[o], S[o + 1], S[o + 2], gone ? 16 : 5, sc0 * 0.7, r * 0.6, 0, 0, 0);
+        let n = 0; while (n < nTw && !(TWL[n] === l && TWI[n] === i)) n++;
+        if (n === nTw && nTw < TWN) { TWL[n] = l; TWI[n] = i; TWC[n] = old; nTw++; } else if (n === nTw) setScale(L, i, g);
+      }
+    }
+  }
+}
+function tweens(dt) {
+  const k = 1 - exp(-dt * 12);
+  for (let n = nTw - 1; n >= 0; n--) {
+    const L = RK[TWL[n]], i = TWI[n], g = L.F[i]; let c = TWC[n]; c += (g - c) * k; if (abs(g - c) < 0.004) c = g;
+    TWC[n] = c; setScale(L, i, c);
+    if (c === g) { nTw--; TWL[n] = TWL[nTw]; TWI[n] = TWI[nTw]; TWC[n] = TWC[nTw]; }
+  }
+}
+// ---------------------------------------------------------------- small sea life blows up
+// A torpedo bursting within r of a fish or a jellyfish blows it up into pieces (the fish is hidden by zeroing its size on the GPU).
+const Z1 = new Float32Array(1);
+function blast(x, y, z, r) {
+  const t = F[TIME];
+  for (const L of SCHL) {
+    const R = L[3];
+    if (abs(x - L[0]) > R + 5 + r || abs(z - L[2]) > 0.6 * R + 5 + r || abs(y - L[1]) > 7 + r) continue;
+    for (let i = L[4], e = i + L[5] * 12; i < e; i += 12) {
+      if (FD[i / 12]) continue;
+      fishPos(i, L, t);
+      const dx = FP[0] - x, dy = FP[1] - y, dz = FP[2] - z;
+      if (dx * dx + dy * dy + dz * dz > r * r) continue;
+      FD[i / 12] = 1; Q.writeBuffer(ibFish, (i + 6) * 4, Z1, 0, 1);
+      chips(FP[0], FP[1], FP[2], 9, FI[i + 6] * 1.4, 0.1, 0, 0, 0, 1 + floor(fract(FI[i + 7] * 3.7) * 5), 0.5);
+    }
+  }
+  for (let i = 0; i < JL.length; i += 8) {
+    if (JD[i / 8]) continue;
+    const ta = t * JL[i + 5] + JL[i + 4], sz = JL[i + 6];
+    const cx = JL[i] + JL[i + 3] * sin(ta), cy = JL[i + 1] + 1.5 * sin(t * 0.5 + JL[i + 4] * 3) + 2 * sin(ta * 0.7) + 0.2 * sz, cz = JL[i + 2] + JL[i + 3] * cos(ta * 0.8);
+    const dx = cx - x, dy = cy - y, dz = cz - z, rr = r + sz * 0.9;
+    if (dx * dx + dy * dy + dz * dz > rr * rr) continue;
+    JD[i / 8] = 1; Q.writeBuffer(ibJelly, (i + 6) * 4, Z1, 0, 1);
+    chips(cx, cy, cz, 14 + (sz * 10 | 0), sz * 0.9, sz * 0.6, 0, 0, 0, fract(JL[i + 7] * 7.3) < 0.5 ? 6 : 7, 0.7);
+  }
+}
+
+// ---------------------------------------------------------------- mantas and the kraken: health, anger
+// Their poses are simulated here and uploaded every frame (a = position + size, b = direction + animation phase, c = anger, seed, side to
+// bank). Calm, they follow their orbit exactly as the shader used to. Health is by size (a manta 12 per metre of size, the kraken 40) and
+// a torpedo takes 25. A hit makes one angry for 20 s: it swims at you much faster and bites on contact (12 from a manta, 30 from the
+// kraken); then it swims back to its orbit and rejoins it. At 0 it blows up.
+const NM = MT.length / 8, NK = KR.length / 8, NC = NM + NK, TDMG = 25, CP = new Float64Array(NC * 16), CRI = new Float32Array(NC * 12), OR = new Float64Array(6);
+const bufCrea = device.createBuffer({ size: NC * 48, usage: BU.VERTEX | BU.COPY_DST });
+// CP per creature: 0-2 position, 3-5 direction, 6 animation phase, 7 anger, 8 health, 9 maximum, 10 size, 11 angry until, 12 next bite, 13 seed, 14 kraken, 15 alive
+const C_PH = 6, C_AN = 7, C_HP = 8, C_MAX = 9, C_SZ = 10, C_UNTIL = 11, C_CD = 12, C_SEED = 13, C_KR = 14, C_ALIVE = 15;
+const KZ = [1.8, 0.3, -1.5, -3.5, -6], KRAD = [0.8, 0.7, 0.6, 0.45, 0.3];
+// the orbit of creature c at time t: position and direction in OR
+function orbit(c, t) {
+  const kr = c >= NM, a = kr ? KR : MT, i = (kr ? c - NM : c) * 8, R = a[i + 3], ta = t * a[i + 5] + a[i + 4], ph = 2 * ta + a[i + 7] * (kr ? 9 : 1);
+  OR[0] = a[i] + R * cos(ta); OR[1] = a[i + 1] + (kr ? 3 : 2.5) * sin(ph); OR[2] = a[i + 2] + 0.75 * R * sin(ta);
+  const tx = -R * sin(ta), ty = (kr ? 6 : 5) * cos(ph), tz = 0.75 * R * cos(ta), l = hypot(tx, ty, tz) * Math.sign(a[i + 5]);
+  OR[3] = tx / l; OR[4] = ty / l; OR[5] = tz / l;
+}
+for (let c = 0; c < NC; c++) {
+  const o = c * 16, kr = c >= NM, a = kr ? KR : MT, i = (kr ? c - NM : c) * 8;
+  CP[o + C_SZ] = a[i + 6]; CP[o + C_MAX] = CP[o + C_HP] = (kr ? 40 : 12) * a[i + 6]; CP[o + C_SEED] = a[i + 7]; CP[o + C_KR] = kr ? 1 : 0; CP[o + C_ALIVE] = 1;
+  orbit(c, 0); for (let j = 0; j < 6; j++) CP[o + j] = OR[j];
+}
+// is the point within pad of creature c's body?
+function cHit(c, px, py, pz, pad) {
+  const o = c * 16, sz = CP[o + C_SZ], x = CP[o], y = CP[o + 1], z = CP[o + 2];
+  if (c < NM) { // a manta: wide and flat
+    const dx = px - x, dz = pz - z, w = sz * 0.8 + pad;
+    return dx * dx + dz * dz < w * w && abs(py - y) < sz * 0.25 + pad + 0.1;
+  }
+  for (let k = 0; k < 5; k++) { // the kraken: a chain of spheres from the mantle back along the arms
+    const zz = KZ[k] * sz, r = KRAD[k] * sz + pad, dx = px - (x + CP[o + 3] * zz), dy = py - (y + CP[o + 4] * zz), dz = pz - (z + CP[o + 5] * zz);
+    if (dx * dx + dy * dy + dz * dz < r * r) return true;
+  }
+  return false;
+}
+function creatures(dt) {
+  const t = F[TIME];
+  for (let c = 0; c < NC; c++) {
+    const o = c * 16, kr = c >= NM, q = c * 12;
+    if (!CP[o + C_ALIVE]) { CRI[q + 3] = 0; continue; }
+    orbit(c, t);
+    const angry = t < CP[o + C_UNTIL];
+    CP[o + C_AN] += ((angry ? 1 : 0) - CP[o + C_AN]) * (1 - exp(-dt * 3));
+    CP[o + C_PH] += dt * (kr ? 1 : 1.25) * (1 + 1.2 * CP[o + C_AN]);
+    if (!angry && hypot(CP[o] - OR[0], CP[o + 1] - OR[1], CP[o + 2] - OR[2]) < 4) { for (let j = 0; j < 6; j++) CP[o + j] = OR[j]; }
+    else {
+      // steer at the player (angry) or at the orbit, turning at a limited rate, and swim
+      let dx = (angry ? F[CX] : OR[0]) - CP[o], dy = (angry ? F[CY] : OR[1]) - CP[o + 1], dz = (angry ? F[CZ] : OR[2]) - CP[o + 2];
+      const l = sqrt(dx * dx + dy * dy + dz * dz) || 1, k = min(1, (kr ? 0.9 : 1.6) * dt);
+      let nx = CP[o + 3] + (dx / l - CP[o + 3]) * k, ny = CP[o + 4] + (dy / l - CP[o + 4]) * k, nz = CP[o + 5] + (dz / l - CP[o + 5]) * k;
+      const nl = sqrt(nx * nx + ny * ny + nz * nz) || 1; nx /= nl; ny /= nl; nz /= nl;
+      const sp = angry ? (kr ? 8 : 14) : (kr ? 6 : 9);
+      CP[o + 3] = nx; CP[o + 4] = ny; CP[o + 5] = nz;
+      CP[o] += nx * sp * dt; CP[o + 1] = clamp(CP[o + 1] + ny * sp * dt, -50, -2); CP[o + 2] += nz * sp * dt;
+      if (angry && t > CP[o + C_CD] && cHit(c, F[CX], F[CY], F[CZ], 0.8)) { hurt(kr ? 30 : 12); CP[o + C_CD] = t + 1.5; }
+    }
+    CRI[q] = CP[o]; CRI[q + 1] = CP[o + 1]; CRI[q + 2] = CP[o + 2]; CRI[q + 3] = CP[o + C_SZ];
+    CRI[q + 4] = CP[o + 3]; CRI[q + 5] = CP[o + 4]; CRI[q + 6] = CP[o + 5]; CRI[q + 7] = CP[o + C_PH];
+    CRI[q + 8] = CP[o + C_AN]; CRI[q + 9] = CP[o + C_SEED]; CRI[q + 10] = kr ? 0 : Math.sign(MT[c * 8 + 5]); CRI[q + 11] = 0;
+  }
+  Q.writeBuffer(bufCrea, 0, CRI);
+}
+creatures(0);
+// the health of the creature last hit, under the player's bar for 4 s
+const ebEl = $('eb'), ebBar = ebEl.firstChild; let ebT = 0;
+function damage(c, d) {
+  const o = c * 16; if (!CP[o + C_ALIVE]) return;
+  CP[o + C_HP] -= d; CP[o + C_UNTIL] = F[TIME] + 20;
+  ebBar.style.transform = `scaleX(${max(CP[o + C_HP], 0) / CP[o + C_MAX]})`; ebEl.className = 'on'; clearTimeout(ebT); ebT = setTimeout(() => { ebEl.className = ''; }, 4000);
+  if (CP[o + C_HP] > 0) return;
+  CP[o + C_ALIVE] = 0;
+  for (let j = 0, n = c >= NM ? 5 : 2; j < n; j++) { const k = c >= NM ? -j * 2.5 * CP[o + C_SZ] : 0; boom(CP[o] + CP[o + 3] * k, CP[o + 1] + CP[o + 4] * k, CP[o + 2] + CP[o + 5] * k, 0, 0, 0, false); }
+}
+
 let DI = 0, dr0 = 0, drN = 0, FLI = 0, flDirty = false;
 // the torpedo flying along (dx, dy, dz) bursts at (x, y, z): flash, a cloud of bubbles rising to the surface, and chips when it hit rock
 function boom(x, y, z, dx, dy, dz, rock) {
   const f = FLI * 8; FLB[f] = x - dx * 0.8; FLB[f + 1] = y - dy * 0.8; FLB[f + 2] = z - dz * 0.8; FLB[f + 3] = 3.2; FLB[f + 4] = F[TIME];
   FLI = (FLI + 1) % NFL; flDirty = true;
+  blast(x, y, z, 3.2);
+  const dd = sqrt((x - F[CX]) * (x - F[CX]) + (y - F[CY]) * (y - F[CY]) + (z - F[CZ]) * (z - F[CZ]));
+  if (dd < 12) hurt(60 * (1 - dd / 12) * (1 - dd / 12));
   for (let j = 0; j < 110; j++) { const a = Math.random() * 6.283, b = Math.random() * 2 - 1, r = Math.sqrt(1 - b * b) * 1.1; bub(x + cos(a) * r, y + b * 1.1, z + sin(a) * r, 0.05 + Math.random() * Math.random() * 0.3, 0.8 + Math.random() * 1.6, 0.5 + Math.random() * 1.5); }
-  if (rock) for (let j = 0; j < 28; j++) {
-    const o = DI * 8; let vx = -dx * 0.7 + Math.random() * 2 - 1, vy = -dy * 0.7 + Math.random() * 2 - 1, vz = -dz * 0.7 + Math.random() * 2 - 1; const l = sqrt(vx * vx + vy * vy + vz * vz) || 1, sp = (2 + Math.random() * 6) / l;
-    DB[o] = x; DB[o + 1] = y; DB[o + 2] = z; DB[o + 3] = 0.05 + Math.random() * 0.15; DB[o + 4] = F[TIME]; DB[o + 5] = vx * sp; DB[o + 6] = vy * sp; DB[o + 7] = vz * sp;
+  if (rock) chips(x, y, z, 28, 1, 0, dx, dy, dz);
+}
+// n chips around (x, y, z) (spread m), flying out and back along (-dx, -dy, -dz), sizes times sz; kind: 0 rock, 1-5 fish species, 6-7 jellyfish
+function chips(x, y, z, n, sz, spread, dx, dy, dz, kind = 0, v = 1) {
+  for (let j = 0; j < n; j++) {
+    const o = DI * 8; const vx = -dx * 0.7 + Math.random() * 2 - 1, vy = -dy * 0.7 + Math.random() * 2 - 1, vz = -dz * 0.7 + Math.random() * 2 - 1, l = sqrt(vx * vx + vy * vy + vz * vz) || 1, sp = (2 + Math.random() * 6) * v / l;
+    DB[o] = x + (Math.random() - 0.5) * spread * 2; DB[o + 1] = y + (Math.random() - 0.5) * spread * 2; DB[o + 2] = z + (Math.random() - 0.5) * spread * 2; DB[o + 3] = (0.05 + Math.random() * 0.15) * sz + kind * 10;
+    DB[o + 4] = F[TIME]; DB[o + 5] = vx * sp; DB[o + 6] = vy * sp; DB[o + 7] = vz * sp;
     DI = (DI + 1) % ND; drN++;
   }
 }
@@ -664,6 +859,7 @@ function fire() {
 }
 function torp(dt) {
   nTorp = 0; tr0 = TRI; trN = 0; dr0 = DI; drN = 0;
+  if (nTw) tweens(dt);
   for (let k = 0; k < TMAX; k++) {
     if (!TL[k]) continue;
     const o = k * 10; let todo = TV * dt, hit = false, hk = 0;
@@ -678,7 +874,9 @@ function torp(dt) {
       hit = hk > 0 || TP[o + 6] >= TP[o + 9] || TP[o + 1] > -0.6;
     }
     if (hit) {
+      if (hk === 2 && hitC >= 0) damage(hitC, TDMG);
       boom(TP[o], TP[o + 1], TP[o + 2], TP[o + 3], TP[o + 4], TP[o + 5], hk === 1);
+      if (hk === 1) crumble(TP[o], TP[o + 1], TP[o + 2]);
       TL[k] = 0;
       if (SFX) SFX(1, 0);
       continue;
@@ -731,12 +929,19 @@ function frame(now) {
     const sp = ks || tN > 1 ? 26 : 7, k = 1 - exp(-dt * 4.5), mf = tId >= 0 ? 0.7 : kf - kb, mr = kr - kl, mu = ku - kd, cp = cos(pitch), sy = sin(yaw), cw = cos(yaw);
     const vx = F[VX] + ((sy * cp * mf + cw * mr) * sp - F[VX]) * k, vy = F[VY] + ((sin(pitch) * mf + mu) * sp - F[VY]) * k, vz = F[VZ] + ((-cw * cp * mf + sy * mr) * sp - F[VZ]) * k;
     let x = F[CX] + vx * dt, y = F[CY] + vy * dt, z = F[CZ] + vz * dt;
-    const rad = sqrt(x * x + z * z); if (rad > 150) { x *= 150 / rad; z *= 150 / rad; }
-    y = y < -52 ? -52 : y > -1.2 ? -1.2 : y;
+    // invisible boundaries: the reef is a circle of 150 m, the open sea a strip from x = 125 to 420, 300 m wide
+    if (x > 125) { x = x > 420 ? 420 : x; z = z > 150 ? 150 : z < -150 ? -150 : z; } else { const rad = sqrt(x * x + z * z); if (rad > 150) { x *= 150 / rad; z *= 150 / rad; } }
+    const ymin = -52 - 23 * clamp((x - 120) / 40, 0, 1); // the sea has no floor: you can go deeper there
+    y = y < ymin ? ymin : y > -1.2 ? -1.2 : y;
     F[YAW] = yaw; F[PIT] = pitch; F[VX] = vx; F[VY] = vy; F[VZ] = vz; F[MX] = x - F[CX]; F[MY] = y - F[CY]; F[MZ] = z - F[CZ];
     collide();
+    if (F[IMP] > 1) hurt(min(0.15 * (F[IMP] - 1) * (F[IMP] - 1), 40));
+    F[IMP] = 0;
+    if (F[HP] < 100 && !menu) { F[HP] = min(100, F[HP] + 2 * dt); if (floor(F[HP]) !== hpShown) showHP(); }
   }
+  creatures(dt);
   torp(dt);
+  if ((F[MMT] -= dt) < 0 && !menu) { F[MMT] = 0.1; drawMap(); }
   render();
   if (hud) {
     hN++; if (dtr > hMax) hMax = dtr; if (dtr < hMin) hMin = dtr; if (dtr > hPer * 1.5) { hLate++; hTot++; }

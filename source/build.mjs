@@ -4,7 +4,7 @@
 //   npm run build:dev        ../dev.html: unminified, plus the development tools in src/dev.js
 //   npm run dev              build:dev, then serve it at http://localhost:5173, rebuilding and reloading the page on every edit
 //                            (--port <n> picks another port)
-import { readFileSync, writeFileSync, watch } from 'node:fs';
+import { readFileSync, writeFileSync, statSync, watch } from 'node:fs';
 import { createServer } from 'node:http';
 import { gzipSync } from 'node:zlib';
 import path from 'node:path';
@@ -58,10 +58,13 @@ if (serve) {
     } else if (url === '/' || url === '/index.html' || url === '/dev.html') send(res, 'text/html; charset=utf-8', html.replace('</body>', () => client + '</body>'));
     else { res.writeHead(404); res.end('not found'); }
   }).listen(port, () => console.log(`dev server: http://localhost:${port}  (rebuilds and reloads on every change in src/ and template.html)`));
-  let timer;
+  // only a changed modification time counts: reading a file (another dev server rebuilding, say) can fire the watchers too
+  const mtime = () => Math.max(...[...FILES.map((f) => path.join('src', f)), 'template.html', 'cockpit.webp'].map((f) => statSync(path.join(here, f)).mtimeMs));
+  let timer, stamp = mtime();
   const rebuild = () => {
     clearTimeout(timer);
     timer = setTimeout(() => { // editors fire several events per save
+      const m = mtime(); if (m === stamp) return; stamp = m;
       try { html = build(); for (const c of clients) c.write('data: reload\n\n'); }
       catch (e) { console.error('build failed:', e.message); }
     }, 80);

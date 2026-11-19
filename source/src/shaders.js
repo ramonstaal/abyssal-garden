@@ -79,6 +79,8 @@ fn dens(p: vec3f) -> f32 {
     let a = P[k]; let b = P[k + 1u]; k += 2u;
     d = smin(d, seg3(p + w * 2., a.xyz, b.xyz) - a.w, 2.);
   }
+  // open sea to the east: the rock thins out and the seabed falls away below the grid from x = 70 to 125, past that there is only water
+  d = mix(d, -4., ss(70., 125., p.x));
   return min(d, 3. - p.y);
 }
 @compute @workgroup_size(4, 4, 4) fn main(@builtin(global_invocation_id) id: vec3u) {
@@ -535,27 +537,29 @@ struct VF { @location(0) p: vec3f, @location(1) n: vec4f, @location(2) a: vec4f,
   c += E * pow(sat(dot(n, normalize(V + L))), 24.) * 1.6 + vec3f(.3, .6, .7) * pow(1. - sat(dot(n, V)), 3.) * .25 * vv.g;
   return fin(fog(c, i.wp, z));
 }
-@vertex fn vsManta(i: VI) -> VO {
+// instance for the mantas and the kraken, written by the CPU each frame: a = position + size, b = direction + animation phase,
+// c = anger (0-1), seed, side the manta banks to
+struct VM { @location(0) p: vec3f, @location(1) n: vec4f, @location(2) a: vec4f, @location(3) b: vec4f, @location(4) c: vec4f };
+@vertex fn vsManta(i: VM) -> VO {
   var o: VO;
-  let t = g.cam.w; let R = i.a.w; let sz = i.b.z;
-  let ta = t * i.b.y + i.b.x;
-  let P = i.a.xyz + vec3f(R * cos(ta), 2.5 * sin(2. * ta + i.b.w), R * .75 * sin(ta));
-  let T = normalize(vec3f(-R * sin(ta), 5. * cos(2. * ta + i.b.w) * 1., R * .75 * cos(ta))) * sign(i.b.y);
-  var S = normalize(cross(vec3f(0., 1., 0.), T)); var Up = cross(T, S);
-  let bank = -.28 * sign(i.b.y);
+  let sz = i.a.w; let P = i.a.xyz; let fl = i.b.w; let sd = i.c.y;
+  let T = normalize(i.b.xyz);
+  let u0 = select(vec3f(0., 1., 0.), vec3f(1., 0., 0.), abs(T.y) > .99);
+  var S = normalize(cross(u0, T)); var Up = cross(T, S);
+  let bank = -.28 * i.c.z;
   let S2 = S * cos(bank) + Up * sin(bank); Up = Up * cos(bank) - S * sin(bank); S = S2;
   let u = i.n.w; let au = abs(u);
-  let fp = t * 1.25 + i.b.w * 5. - au * 1.2;
+  let fp = fl + sd * 5. - au * 1.2;
   let amp = .36 * pow(au, 1.6);
   var l = i.p;
-  l.y += amp * sin(fp) - .1 * sin(t * 1.25 + i.b.w * 5.);
+  l.y += amp * sin(fp) - .1 * sin(fl + sd * 5.);
   let tail = ss(-.5, -1.9, l.z) * step(au, .001);
-  l.x += tail * sin(t * .8 + l.z * 2.) * .12;
+  l.x += tail * sin(fl * .64 + l.z * 2.) * .12;
   let sl = (.576 * pow(au, .6) * sin(fp) - .43 * pow(au, 1.6) * cos(fp)) * sign(u);
   let ln = normalize(vec3f(i.n.x - sl * i.n.y, i.n.y + sl * i.n.x, i.n.z));
   let w = P + (S * l.x + Up * l.y + T * l.z) * sz;
-  o.cp = g.vp * vec4f(w, 1.); o.wp = w; o.n = S * ln.x + Up * ln.y + T * ln.z; o.op = i.p; o.sd = i.b.w;
-  o.lt = 1.;
+  o.cp = g.vp * vec4f(w, 1.); o.wp = w; o.n = S * ln.x + Up * ln.y + T * ln.z; o.op = i.p; o.sd = sd;
+  o.lt = 1.; o.sc = i.c.x;
   return o;
 }
 @fragment fn fsManta(i: VO) -> @location(0) vec4f {
@@ -572,6 +576,7 @@ struct VF { @location(0) p: vec3f, @location(1) n: vec4f, @location(2) a: vec4f,
   var back = vec3f(.04, .065, .10) + vec3f(.10, .16, .2) * ss(.5, .75, tx.a);
   back = mix(back, vec3f(.36, .46, .52), ss(.25, .0, abs(au - .26) * 3.5 + abs(i.op.z - .12) * 5.) * .8);
   var alb = mix(belly, back, top);
+  alb = mix(alb, vec3f(.55, .05, .03) * (.5 + tx.b), i.sc * .55);
   let E = sunE(i.wp.y, z) * shadow4(i.wp + n * .3);
   let ndv = sat(dot(n, V));
   let ir = .5 + .5 * cos(TAU * (vec3f(0., .33, .67) + ndv * 1.1 + tx.a * 1.5 + .55));
@@ -581,38 +586,38 @@ struct VF { @location(0) p: vec3f, @location(1) n: vec4f, @location(2) a: vec4f,
   c += E * pow(sat(dot(n, normalize(V + L))), 30.) * .5 * (.3 + ca);
   let sky = amb(i.wp, vec3f(0., 1., 0.), vv.g, z);
   c += alb * sky * ca * .45 * (1. - top) + sky * pow(1. - ndv, 3.) * .35;
+  c += vec3f(1., .12, .04) * i.sc * (.12 + .5 * pow(1. - ndv, 2.5));
   return fin(fog(c, i.wp, z));
 }
 
 // kraken: the mantle pulses, the arms trail and wave (each with its own phase, from the arm number in aux), the fins ripple
-struct KO { @builtin(position) cp: vec4f, @location(0) wp: vec3f, @location(1) n: vec3f, @location(2) op: vec3f, @location(3) @interpolate(flat) sd: f32, @location(4) k: f32, @location(5) on: vec3f };
-@vertex fn vsKraken(i: VI) -> KO {
+struct KO { @builtin(position) cp: vec4f, @location(0) wp: vec3f, @location(1) n: vec3f, @location(2) op: vec3f, @location(3) @interpolate(flat) sd: f32, @location(4) k: f32, @location(5) on: vec3f, @location(6) ang: f32 };
+@vertex fn vsKraken(i: VM) -> KO {
   var o: KO;
-  let t = g.cam.w; let R = i.a.w; let sz = i.b.z;
-  let ta = t * i.b.y + i.b.x;
-  let P = i.a.xyz + vec3f(R * cos(ta), 3. * sin(2. * ta + i.b.w * 9.), R * .75 * sin(ta));
-  let T = normalize(vec3f(-R * sin(ta), 6. * cos(2. * ta + i.b.w * 9.), R * .75 * cos(ta))) * sign(i.b.y);
-  let S = normalize(cross(vec3f(0., 1., 0.), T)); let Up = cross(T, S);
+  let sz = i.a.w; let P = i.a.xyz; let tp = i.b.w; let sd = i.c.y; let ang = i.c.x;
+  let T = normalize(i.b.xyz);
+  let u0 = select(vec3f(0., 1., 0.), vec3f(1., 0., 0.), abs(T.y) > .99);
+  let S = normalize(cross(u0, T)); let Up = cross(T, S);
   let k = i.n.w;
   var l = i.p;
-  let pu = pow(max(sin(t * .85 + i.b.w * 20.), 0.), 2.);
+  let pu = pow(max(sin(tp * .85 + sd * 20.), 0.), 2.);
   if (k > .02) {
     let n = round((k - .05) / .09); let ph = n * 2.1;
     let sw = max(-l.z - .25, 0.);
-    let env = pow(min(sw / 5., 2.2), 1.3);
-    l.x += sin(t * 1.05 - sw * .7 + ph) * .5 * env;
-    l.y += cos(t * .8 - sw * .55 + ph * 1.3) * .4 * env - .15 * env;
+    let env = pow(min(sw / 5., 2.2), 1.3) * (1. + .8 * ang);
+    l.x += sin(tp * 1.05 - sw * .7 + ph) * .5 * env;
+    l.y += cos(tp * .8 - sw * .55 + ph * 1.3) * .4 * env - .15 * env;
     let c = 1. - .3 * pu * min(env, 1.);
     l = vec3f(l.x * c, l.y * c, l.z);
   } else if (k < -.75) {
     let a = abs(l.x);
-    l.y += .15 * clamp(a - .4, 0., 1.) * sin(t * 1.7 - a * 3. + i.b.w * 5.);
+    l.y += .15 * clamp(a - .4, 0., 1.) * sin(tp * 1.7 - a * 3. + sd * 5.);
   } else if (k > -.25) {
     let c = 1. - .08 * pu * ss(-.3, 1., l.z);
     l = vec3f(l.x * c, l.y * c, l.z);
   }
   let w = P + (S * l.x + Up * l.y + T * l.z) * sz;
-  o.cp = g.vp * vec4f(w, 1.); o.wp = w; o.n = S * i.n.x + Up * i.n.y + T * i.n.z; o.op = i.p; o.sd = i.b.w; o.k = k; o.on = i.n.xyz;
+  o.cp = g.vp * vec4f(w, 1.); o.wp = w; o.n = S * i.n.x + Up * i.n.y + T * i.n.z; o.op = i.p; o.sd = sd; o.k = k; o.on = i.n.xyz; o.ang = ang;
   return o;
 }
 @fragment fn fsKraken(i: KO) -> @location(0) vec4f {
@@ -627,18 +632,19 @@ struct KO { @builtin(position) cp: vec4f, @location(0) wp: vec3f, @location(1) n
   let up = ss(-.5, .6, normalize(i.on).y);
   var alb = mix(vec3f(.55, .27, .27), vec3f(.20, .035, .07), up);
   alb = mix(alb, vec3f(.09, .03, .16), ss(.45, .8, tx.a) * .7) * (.7 + .6 * tx.b);
+  alb = mix(alb, vec3f(.5, .04, .05) * (.6 + tx.b), i.ang * .5);
   let inward = ss(.2, .9, dot(normalize(i.on.xy + vec2f(1e-4)), -normalize(i.op.xy + vec2f(1e-4)))) * arm;
   let dd = length(fract(vec2f(-i.op.z * 4., atan2(i.on.y, i.on.x) * 1.9)) - .5);
   alb = mix(alb, vec3f(.85, .55, .5), ss(.38, .28, dd) * inward * .85);
   alb = mix(alb, vec3f(.5, .1, .22) * (.6 + .8 * tx.b), isFin * .6);
   var emi = vec3f(0.); var gloss = .35;
   let sp = ss(.78, .86, tx2.a) * (1. - arm) * (1. - eye) * (1. - isFin) * up;
-  emi += vec3f(.05, .5, .7) * sp * (.6 + .4 * sin(g.cam.w * 1.3 + tx2.b * 20.));
+  emi += mix(vec3f(.05, .5, .7), vec3f(1., .12, .05), i.ang) * sp * (.6 + .4 * sin(g.cam.w * 1.3 + tx2.b * 20.));
   if (eye > .5) {
     let u = (i.op - vec3f(sign(i.op.x) * .47, .04, -.03)) / .2;
     let slit = ss(.22, .12, abs(u.y)) * ss(.9, .55, abs(u.z)) * ss(.2, .5, u.x * sign(i.op.x));
-    alb = mix(vec3f(.9, .55, .08), vec3f(0.), slit);
-    emi = vec3f(.35, .22, .02) * (1. - slit); gloss = 1.;
+    alb = mix(mix(vec3f(.9, .55, .08), vec3f(.95, .06, .03), i.ang), vec3f(0.), slit);
+    emi = mix(vec3f(.35, .22, .02), vec3f(1.6, .15, .05), i.ang) * (1. - slit); gloss = 1.;
   }
   let E = sunE(i.wp.y, z) * shadow4(i.wp + n * .3);
   var c = alb * (E * sat(dot(n, L)) * (.3 + ca) + amb(i.wp, n, vv.g, z) * 1.1 + side(i.wp, n, 1., z) * .8) + emi;
@@ -809,8 +815,8 @@ fn quad(i: u32) -> vec2f { return vec2f(f32(i & 1u), f32(i >> 1u)) * 2. - 1.; }
   return o;
 }
 @vertex fn vsFlash(@builtin(vertex_index) vi: u32, @location(0) a: vec4f, @location(1) b: vec4f) -> VO {
-  // explosion flash: a = position + radius, b.x = start time; a glow that grows and fades in 0.45 s, with a shock ring
-  var o: VO; let q = quad(vi); let k = (g.cam.w - b.x) / .45;
+  // explosion flash: a = position + radius, b.x = start time; a glow that grows and fades in 0.18 s, with a shock ring
+  var o: VO; let q = quad(vi); let k = (g.cam.w - b.x) / .18;
   let sz = a.w * select(0., 1. + 1.6 * k, k >= 0. && k < 1.);
   let w = a.xyz + (g.right.xyz * q.x + g.up.xyz * q.y) * sz;
   o.cp = g.vp * vec4f(w, 1.); o.uv = q; o.wp = a.xyz; o.pr = vec4f(k, 0., 0., 0.);
@@ -818,31 +824,44 @@ fn quad(i: u32) -> vec2f { return vec2f(f32(i & 1u), f32(i >> 1u)) * 2. - 1.; }
 }
 @fragment fn fsFlash(i: VO) -> @location(0) vec4f {
   let k = i.pr.x; let r = length(i.uv);
-  let core = (1. - k) * (1. - k) * exp(-r * r * 6.) * 14.;
+  let core = (1. - k) * exp(-r * r * 6.) * 14.;
   let rr = (r - (.25 + .75 * k)) * 9.;
   let ring = (1. - k) * exp(-rr * rr) * 1.6;
   let d = length(i.wp - g.cam.xyz);
   return vec4f(min(vec3f(1., .96, .88) * (core + ring) * exp(-SIG.g * d), vec3f(40.)), 0.);
 }
 @vertex fn vsDebris(@builtin(vertex_index) vi: u32, @location(0) a: vec4f, @location(1) b: vec4f) -> VO {
-  // rock chip: a = spawn position + size, b = spawn time + velocity; it flies out, slows down in the water and sinks
+  // chip: a = spawn position + size + 10 * kind (0 rock, 1-5 fish species, 6-7 jellyfish), b = spawn time + velocity;
+  // it flies out, slows down in the water and sinks
   var o: VO; let q = quad(vi); let age = g.cam.w - b.x;
+  let kind = floor(a.w * .1 + .2); let size = a.w - kind * 10.;
   let ok = step(0., age) * step(age, 3.5);
   var p = a.xyz + b.yzw * ((1. - exp(-2.5 * age)) / 2.5);
   p.y -= 1.3 * (age - (1. - exp(-1.2 * age)) / 1.2);
-  let sz = a.w * ok * ss(3.5, 2.6, age);
-  let an = age * (3. + 6. * hs(a.w * 91.)) + hs(b.x) * 6.3; let c = cos(an); let s = sin(an);
+  let sz = size * ok * ss(3.5, 2.6, age);
+  let an = age * (3. + 6. * hs(size * 91.)) + hs(b.x) * 6.3; let c = cos(an); let s = sin(an);
   let w = p + (g.right.xyz * (q.x * c - q.y * s) + g.up.xyz * (q.x * s + q.y * c)) * sz;
   o.cp = g.vp * vec4f(w, 1.); o.uv = q; o.wp = p;
-  o.pr = vec4f(hs(a.w * 57. + b.x), sz, shadow1(p), 0.);
+  o.pr = vec4f(hs(size * 57. + b.x), sz, shadow1(p), kind);
   return o;
 }
 @fragment fn fsDebris(i: VO) -> @location(0) vec4f {
   let m = max(abs(i.uv.x) * .87 + abs(i.uv.y) * .5, abs(i.uv.y));
   let al = 1. - ss(.8, 1., m);
-  let z = zone(i.wp);
-  let alb = mix(vec3f(.16, .15, .14), vec3f(.36, .31, .24), i.pr.x) * (.55 + .45 * step(0., i.uv.x - i.uv.y));
-  let c = alb * (sunE(i.wp.y, z) * (.3 + .5 * i.pr.z) + amb(i.wp, vec3f(0., 1., 0.), 1., z) * 1.4);
+  let z = zone(i.wp); let kind = i.pr.w;
+  var alb = mix(vec3f(.16, .15, .14), vec3f(.36, .31, .24), i.pr.x);
+  var emi = vec3f(0.);
+  if (kind > .5) {
+    var bel = vec3f(.5, .68, .8); var bk = vec3f(.1, .22, .4);
+    if (kind > 1.5) { bel = vec3f(.95, .6, .3); bk = vec3f(.7, .18, .06); }
+    if (kind > 2.5) { bel = vec3f(.95, .88, .35); bk = vec3f(.55, .5, .1); }
+    if (kind > 3.5) { bel = vec3f(.45, .85, .8); bk = vec3f(.05, .3, .38); }
+    if (kind > 4.5) { bel = vec3f(.8, .55, .9); bk = vec3f(.3, .1, .45); }
+    alb = mix(bel, bk, i.pr.x);
+    if (kind > 5.5) { alb = select(vec3f(1., .35, .75), vec3f(.3, .75, 1.), kind > 6.5) * (.5 + .5 * i.pr.x); emi = alb * .8; }
+  }
+  alb *= .55 + .45 * step(0., i.uv.x - i.uv.y);
+  let c = alb * (sunE(i.wp.y, z) * (.3 + .5 * i.pr.z) + amb(i.wp, vec3f(0., 1., 0.), 1., z) * 1.4) + emi;
   return vec4f(min(fog(c, i.wp, z) * al, vec3f(20.)), al);
 }
 @vertex fn vsSnow(@builtin(vertex_index) vi: u32, @location(0) a: vec4f) -> VO {

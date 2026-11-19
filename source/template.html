@@ -37,6 +37,32 @@ body:not(.g) canvas { filter: blur(1vmax) brightness(.5); transform: scale(1.06)
 .g #v { opacity: 1; }
 #v.x { display: none; }
 
+/* minimap (top left) */
+#mm {
+  position: absolute; left: .8em; top: .8em; z-index: 1; width: 15em; height: 8.75em; display: none; border-radius: .5em; pointer-events: none;
+  background: #03131c; box-shadow: 0 0 0 2px #7ff3ff80, 0 0 1em #000a; opacity: .92;
+}
+.g #mm { display: block; }
+
+/* health bar (top centre), the red pulse when hurt, and the message when you start over */
+#hp {
+  position: absolute; top: 1.1em; left: 50%; z-index: 1; width: min(22em, 40vw); height: .7em; transform: translateX(-50%); display: none;
+  overflow: hidden; border-radius: 1em; background: #03131ccc; box-shadow: 0 0 0 2px #7ff3ff80, 0 0 1em #000a; pointer-events: none;
+}
+.g #hp { display: block; }
+#hp i { display: block; height: 100%; background: hsl(120 80% 50%); transform-origin: 0; transition: transform .25s; }
+#eb {
+  position: absolute; top: 2.5em; left: 50%; z-index: 1; width: min(14em, 28vw); height: .5em; transform: translateX(-50%); display: none;
+  overflow: hidden; border-radius: 1em; background: #03131ccc; box-shadow: 0 0 0 2px #ff8a8099, 0 0 1em #000a; pointer-events: none;
+}
+.g #eb.on { display: block; }
+#eb i { display: block; height: 100%; background: #ff3d33; transform-origin: 0; transition: transform .25s; }
+#dm { position: absolute; inset: 0; z-index: 1; opacity: 0; pointer-events: none; background: radial-gradient(#0000 35%, #ff1a1acc); }
+#dd {
+  position: absolute; left: 0; right: 0; top: 38%; z-index: 1; margin: 0; opacity: 0; text-align: center; pointer-events: none;
+  font: 900 3em/1 system-ui, sans-serif; letter-spacing: .1em; text-transform: uppercase; color: #ff8a80; text-shadow: 0 .05em .3em #000;
+}
+
 /* crosshair: where the torpedoes go */
 #x {
   position: absolute; left: 50%; top: 50%; z-index: 1; width: 1.1em; height: 1.1em; box-sizing: border-box; display: none;
@@ -140,6 +166,11 @@ svg { width: 1.5em; height: 1.5em; fill: currentColor; }
 <canvas id=c></canvas>
 <div id=v></div>
 <i id=x></i>
+<canvas id=mm width=300 height=175></canvas>
+<div id=hp><i></i></div>
+<div id=eb><i></i></div>
+<div id=dm></div>
+<p id=dd>Hull breached</p>
 <div id=m>
   <h1>Abyssal Garden</h1>
   <div id=a>
