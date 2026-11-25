@@ -747,6 +747,28 @@ struct VO { @builtin(position) cp: vec4f, @location(0) wp: vec3f };
   let c = mix(refl, sky, win);
   return fin(fog(c, i.wp, z));
 }
+// the abyssal floor, 240 m down: dark ooze with glowing specks, only seen from deep in the open sea
+@vertex fn vsF(@builtin(vertex_index) i: u32) -> VO {
+  var o: VO;
+  let p = vec2f(f32(i & 1u), f32(i >> 1u)) * 2. - 1.;
+  o.wp = vec3f(g.cam.x + p.x * 900., -240., g.cam.z + p.y * 900.);
+  o.cp = g.vp * vec4f(o.wp, 1.);
+  return o;
+}
+@fragment fn fsF(i: VO) -> @location(0) vec4f {
+  let t1 = textureSample(tD, sR, i.wp.xz * .05); let t2 = textureSample(tD, sR, i.wp.xz * .4); let t3 = textureSample(tD, sR, i.wp.xz * 1.9);
+  let n = normalize(vec3f((t1.r - .5) * .9 + (t2.r - .5) * .6 + (t3.r - .5) * .3, 1., (t1.g - .5) * .9 + (t2.g - .5) * .6 + (t3.g - .5) * .3));
+  var alb = mix(vec3f(.06, .065, .07), vec3f(.16, .15, .13), t1.a) * (.55 + .9 * t2.b);
+  let z = zone(i.wp); let L = g.sun.xyz;
+  // glowing specks (a sea of bioluminescent animals): one in some cells of a grid, each with a soft halo
+  let q = i.wp.xz * .35; let cell = floor(q); let h = hs(cell.x * 7.1 + cell.y * 13.7); let jit = vec2f(hs(h * 91.), hs(h * 57.)) * .5 + .25;
+  let r = length(fract(q) - jit);
+  let on = step(.8, h);
+  let col = mix(mix(vec3f(.1, .9, .8), vec3f(.9, .3, .9), step(.5, fract(h * 9.))), vec3f(.3, 1., .3), step(.8, fract(h * 17.)));
+  let glow = col * on * (ss(.12, .0, r) * 2.2 + ss(.5, .0, r) * .25) * (.7 + .3 * sin(g.cam.w * 1.7 + h * 40.));
+  let c = alb * (sunE(i.wp.y, z) * sat(dot(n, L)) * 2. + amb(i.wp, n, 1., z) * 1.4 + vec3f(.004, .008, .012)) + glow;
+  return fin(fog(c, i.wp, z));
+}
 // behind everything: where no terrain is drawn (it stops at ~240 m) the water looks as it does at that distance
 @vertex fn vsB(@builtin(vertex_index) i: u32) -> VO {
   var o: VO;
@@ -983,5 +1005,87 @@ fn sat3(x: vec3f) -> vec3f { return clamp(x, vec3f(0.), vec3f(1.)); }
   c = pow(max(c, vec3f(0.)), vec3f(1. / 2.2));
   let n = ign(fc.xy) + ign(fc.xy + 37.) - 1.;
   return vec4f(c + n / 255., 1.);
+}
+`;
+
+// ---------------------------------------------------------------- the leviathan
+// body: vertices built on the CPU every frame (a = position + metres along the body, b = normal + angle round it, 0 on the back);
+// head: a mesh with the same instance data as the mantas (a = position + size, b = direction + jaw angle, c = rage, sway phase)
+const W_LEV = S_B + /*wgsl*/`
+struct LO { @builtin(position) cp: vec4f, @location(0) wp: vec3f, @location(1) n: vec3f, @location(2) uv: vec2f };
+@vertex fn vsLB(@location(0) a: vec4f, @location(1) b: vec4f) -> LO {
+  var o: LO; o.cp = g.vp * vec4f(a.xyz, 1.); o.wp = a.xyz; o.n = b.xyz; o.uv = vec2f(a.w, b.w);
+  return o;
+}
+// overlapping armour plates: x is 1 in the middle of a plate and 0 in the seams, y a hash per plate
+fn plates(uv: vec2f) -> vec3f {
+  let row = uv.x / 2.2; let r = floor(row);
+  let col = uv.y * 40. + .5 * (r - 2. * floor(r * .5));
+  let c = vec2f(fract(col) - .5, fract(row) - .5);
+  let d = max(abs(c.x) * 1.1, abs(c.y) * 1.2 + abs(c.x) * .35);
+  return vec3f(ss(.62, .38, d), hs(floor(col) * 7.3 + r * 13.1), ss(-.4, .45, c.y));
+}
+@fragment fn fsLB(i: LO) -> @location(0) vec4f {
+  var n = normalize(i.n); let V = normalize(g.cam.xyz - i.wp); if (dot(n, V) < 0.) { n = -n; }
+  let t = g.cam.w; let rage = g.mis.w; let L = g.sun.xyz;
+  let pl = plates(i.uv);
+  let belly = ss(.3, .46, i.uv.y) * ss(.7, .54, i.uv.y);
+  var alb = mix(vec3f(.03, .045, .055), vec3f(.10, .13, .12), belly) * (.5 + .9 * pl.x) * (.8 + .4 * pl.y) * (.6 + .8 * pl.z);
+  alb = mix(vec3f(.012, .02, .025), alb, pl.x);
+  let pulse = .5 + .5 * sin(i.uv.x * .05 - t * 1.6);
+  let seam = (1. - pl.x) * ss(.0, .3, pl.y);
+  let glow = mix(vec3f(.04, .85, .8), vec3f(1., .22, .04), rage);
+  var emi = glow * seam * (.03 + .14 * pulse) * (.7 + 2.5 * rage);
+  let dots = ss(.22, .05, length(fract(vec2f(i.uv.x * .55, i.uv.y * 70.)) - .5)) * belly;
+  emi += vec3f(.2, .9, .7) * dots * (.5 + .5 * pulse) * 1.2;
+  let z = zone(i.wp); let E = sunE(i.wp.y, z);
+  var c = alb * (E * sat(dot(n, L)) * 1.5 + amb(i.wp, n, 1., z) * 2.) + emi;
+  c += vec3f(.04, .2, .3) * pow(1. - sat(dot(n, V)), 3.) * (.6 + 1.5 * rage);
+  c += (E * .5 + vec3f(.05, .12, .16) * (.4 + 1.2 * rage)) * pow(sat(dot(n, normalize(V + L))), 12.) * pl.x * (.4 + pl.z);
+  return fin(fog(c, i.wp, z));
+}
+struct VM { @location(0) p: vec3f, @location(1) n: vec4f, @location(2) a: vec4f, @location(3) b: vec4f, @location(4) c: vec4f };
+struct LH { @builtin(position) cp: vec4f, @location(0) wp: vec3f, @location(1) n: vec3f, @location(2) op: vec3f, @location(3) tag: f32 };
+@vertex fn vsLH(i: VM) -> LH {
+  var o: LH;
+  let P = i.a.xyz; let T = normalize(i.b.xyz); let jaw = i.b.w; let ph = i.c.y;
+  let u0 = select(vec3f(0., 1., 0.), vec3f(1., 0., 0.), abs(T.y) > .99);
+  let S = normalize(cross(u0, T)); let U = cross(T, S);
+  let tag = i.n.w; var l = i.p; var nl = i.n.xyz;
+  let isJaw = (tag > .25 && tag < .35) || (tag > .75 && tag < .85) || (tag > -.7 && tag < -.6);
+  if (isJaw) { // the lower jaw turns about a hinge under the skull
+    let cs = cos(jaw); let sn = sin(jaw); let hy = -5.; let hz = 2.;
+    l = vec3f(l.x, hy + (l.y - hy) * cs - (l.z - hz) * sn, hz + (l.z - hz) * cs + (l.y - hy) * sn);
+    nl = vec3f(nl.x, nl.y * cs - nl.z * sn, nl.z * cs + nl.y * sn);
+  }
+  if (tag > .86) { let k = (tag - .9) * 10.; l.x += sin(ph * 1.3 + l.z * .15) * 1.5 * k; l.z += sin(ph * .9 + l.y * .2) * 1.2 * k; }
+  let w = P + (S * l.x + U * l.y + T * l.z) * i.a.w;
+  o.cp = g.vp * vec4f(w, 1.); o.wp = w; o.n = S * nl.x + U * nl.y + T * nl.z; o.op = i.p; o.tag = tag;
+  return o;
+}
+@fragment fn fsLH(i: LH) -> @location(0) vec4f {
+  var n = normalize(i.n); let V = normalize(g.cam.xyz - i.wp); if (dot(n, V) < 0.) { n = -n; }
+  let t = g.cam.w; let rage = g.mis.w; let tag = i.tag; let L = g.sun.xyz;
+  let z = zone(i.wp); let E = sunE(i.wp.y, z);
+  let pl = plates(vec2f(i.op.z * .8 + i.op.y * .5, atan2(i.op.x, i.op.y) / 6.283 + .5));
+  let glow = mix(vec3f(.04, .85, .8), vec3f(1., .22, .04), rage);
+  var alb = vec3f(.03, .045, .05) * (.5 + .9 * pl.x) * (.6 + .8 * pl.z);
+  var emi = glow * (1. - pl.x) * .1 * (.7 + 2.5 * rage);
+  if ((tag > .5 && tag < .6) || (tag > .75 && tag < .85)) { alb = vec3f(.75, .72, .6); emi = vec3f(.30, .27, .18); }
+  if (tag < -.85 && tag > -.95) { alb = vec3f(.06, .055, .05) * (.6 + .4 * ss(.2, .6, fract(i.op.z * .4 + i.op.y * .4))); emi = vec3f(0.); }
+  if (tag > -.55 && tag < -.45) {
+    let u = (i.op - vec3f(sign(i.op.x) * 7.7, 2.6, 15.5)) / 1.9;
+    let pupil = ss(.28, .12, abs(u.z)) * ss(.1, .5, u.x * sign(i.op.x));
+    let iris = mix(vec3f(1., .55, .05), vec3f(1., .1, .02), rage);
+    alb = iris * .5 * (1. - pupil); emi = iris * (1. - pupil) * (1.2 + 1.6 * rage);
+  }
+  if (tag < -.6 && tag > -.85) {
+    alb = vec3f(.2, .03, .02); emi = vec3f(1., .28, .06) * (.8 + .4 * sin(t * 2. + i.op.z * .3)) * (1. + rage);
+  }
+  if (tag > .86) { alb = vec3f(.04, .05, .06); emi = vec3f(.3, 1., .9) * ss(.8, 1., (tag - .9) * 10.) * 3.; }
+  var c = alb * (E * sat(dot(n, L)) * 1.5 + amb(i.wp, n, 1., z) * 2.) + emi;
+  c += vec3f(.04, .2, .3) * pow(1. - sat(dot(n, V)), 3.) * (.6 + 1.5 * rage);
+  c += E * pow(sat(dot(n, normalize(V + L))), 30.) * .4;
+  return fin(fog(c, i.wp, z));
 }
 `;

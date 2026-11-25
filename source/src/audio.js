@@ -3,7 +3,7 @@
 // ============================================================================
 // A fixed Web Audio graph, built on the first click / key / touch and driven by a 10 Hz timer, not the frame loop.
 // Layers: rumble, surface wash, water rush (follows camera speed), drone, bubbles, chimes and distant whale calls.
-let AC, OUT, SFX, muted = false; // SFX(boom, pan): the torpedo's launch (0) and burst (1)
+let AC, OUT, SFX, muted = false; // SFX(kind, pan): the torpedo's launch (0), its burst (1), the leviathan's roar (2)
 const VOL = 0.78; // master level: about -18.5 LUFS, peaks near -5.5 dBFS
 function mkSound(ac) {
   const sr = ac.sampleRate;
@@ -40,6 +40,14 @@ function mkSound(ac) {
     g.setValueAtTime(0, t); g.linearRampToValueAtTime(vol, t + att); g.setTargetAtTime(0, t + att, (dur - att) / 5);
   };
   SFX = (boom, pan) => {
+    if (boom === 2) { // the leviathan's roar: a long, low growl
+      const t = ac.currentTime + 0.01, e = G(0, out, G(2, wet));
+      e.gain.setValueAtTime(0, t); e.gain.linearRampToValueAtTime(0.5, t + 0.6); e.gain.setTargetAtTime(0, t + 0.8, 0.7);
+      const f = BQ('lowpass', 180, 1, e); f.frequency.setValueAtTime(180, t); f.frequency.exponentialRampToValueAtTime(70, t + 3);
+      N(AudioBufferSourceNode, { buffer: nb, loop: true, playbackRate: 0.6 }, f).stop(t + 3.5);
+      const o = N(OscillatorNode, { type: 'sawtooth', frequency: 52 }, f); o.frequency.setValueAtTime(52, t); o.frequency.exponentialRampToValueAtTime(30, t + 3); o.stop(t + 3.5);
+      return;
+    }
     const t = ac.currentTime + 0.01, d = boom ? 1.4 : 0.6, p = N(StereoPannerNode, { pan }, out, G(boom ? 1.5 : 0.6, wet)), e = G(0, p), f0 = boom ? 300 : 900;
     e.gain.setValueAtTime(0, t); e.gain.linearRampToValueAtTime(boom ? 0.7 : 0.3, t + 0.02); e.gain.setTargetAtTime(0, t + 0.02, d / 5);
     const f = BQ('bandpass', f0, 0.8, e); f.frequency.setValueAtTime(f0, t); f.frequency.exponentialRampToValueAtTime(boom ? 60 : 250, t + d);

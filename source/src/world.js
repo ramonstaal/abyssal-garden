@@ -660,6 +660,53 @@ function meshTorpedo() {
   for (let f = 0; f < 4; f++) { const c = cos(f * PI / 2), s = sin(f * PI / 2); m.quad(m.v(c * 0.14, s * 0.14, -0.55, -1), m.v(c * 0.1, s * 0.1, -0.95, -1), m.v(c * 0.36, s * 0.36, -0.99, -1), m.v(c * 0.3, s * 0.3, -0.78, -1)); }
   return m;
 }
+// The leviathan's head: about 46 m long and 19 m wide, +z forward, +y up, z = 0 where the neck joins (the body is built every frame in
+// main.js). aux tags the parts for the shader: 0 skull, 0.3 lower jaw (turns with the jaw), 0.55 upper tooth, 0.8 lower tooth (turns
+// with the jaw), -0.5 eye, -0.9 horn or spike, -0.8 glowing palate, -0.65 glowing tongue (turns with the jaw), 0.9-1 barbel (sways)
+function meshLeviathan() {
+  const m = new Mesh(), SD = LV > 1 ? 12 : 18;
+  const cr = (a, b, c, d, u) => 0.5 * (2 * b + (c - a) * u + (2 * a - 5 * b + 4 * c - d) * u * u + (3 * b - a - 3 * c + d) * u * u * u);
+  const prof = (P, z) => { // [z, a, b, c] rows -> interpolated [a, b, c]
+    let i = 0; while (i < P.length - 2 && P[i + 1][0] < z) i++;
+    const u = clamp((z - P[i][0]) / (P[i + 1][0] - P[i][0]), 0, 1), A = P[max(i - 1, 0)], B = P[i], C = P[i + 1], D = P[min(i + 2, P.length - 1)];
+    return [1, 2, 3].map((k) => cr(A[k], B[k], C[k], D[k], u));
+  };
+  const SK = [[-6, 8.5, 8.5, 0], [0, 8.5, 8.5, 0], [6, 9.5, 8, 0.5], [14, 8.5, 6.5, 0.5], [22, 6.8, 5, -0.2], [32, 4.8, 3.6, -1], [40, 3, 2.3, -1.6], [44, 1.2, 1.1, -1.8], [45.5, 0.05, 0.05, -1.8]];
+  const JW = [[0, 7.6, 3.4], [10, 7.2, 3.2], [20, 5.8, 2.6], [30, 4, 2], [38, 2.2, 1.3], [41, 0.1, 0.1]];
+  const jawY = (z) => { const k = prof(SK, z), j = prof(JW, z); return k[2] - k[1] * 0.8 - j[1] + 0.5; };
+  // an elliptical lathe along z: rows give [z, half width, half height, centre y]; flatter underneath
+  const lathe = (rows, aux, flat = 0.8) => {
+    const rings = [];
+    for (const [z, wx, wy, yc] of rows) { const r = []; for (let k = 0; k < SD; k++) { const a = k / SD * TAU, c = cos(a); r.push(m.v(sin(a) * wx, yc + c * wy * (c < 0 ? flat : 1), z, aux)); } rings.push(r); }
+    for (let j = 0; j < rings.length - 1; j++) for (let k = 0; k < SD; k++) { const k2 = (k + 1) % SD; m.quad(rings[j][k], rings[j][k2], rings[j + 1][k2], rings[j + 1][k]); }
+  };
+  const rowsSK = [], rowsJ = [], rowsP = [], rowsT = [];
+  for (let i = 0; i <= 30; i++) { const z = mix(-6, 45.5, i / 30), k = prof(SK, z); rowsSK.push([z, k[0], k[1], k[2]]); }
+  for (let i = 0; i <= 22; i++) { const z = mix(0, 41, i / 22), j = prof(JW, z); rowsJ.push([z, j[0], j[1], jawY(z)]); }
+  for (let i = 0; i <= 12; i++) { const z = mix(3, 36, i / 12), k = prof(SK, z); rowsP.push([z, k[0] * 0.7, 0.25, k[2] - k[1] * 0.8 - 0.3]); }
+  for (let i = 0; i <= 12; i++) { const z = mix(3, 36, i / 12), j = prof(JW, z); rowsT.push([z, j[0] * 0.6, 0.3, jawY(z) + j[1] + 0.15]); }
+  lathe(rowsSK, 0); lathe(rowsJ, 0.3, 0.9); lathe(rowsP, -0.8, 1); lathe(rowsT, -0.65, 1);
+  // a cone from (x, y, z) along d
+  const cone = (x, y, z, dx, dy, dz, len, r, aux) => {
+    const l = hypot(dx, dy, dz); dx /= l; dy /= l; dz /= l;
+    m.tube([[x, y, z], [x + dx * len * 0.5 + dz * 0.2, y + dy * len * 0.5, z + dz * len * 0.5], [x + dx * len, y + dy * len, z + dz * len]], (k) => [r, r * 0.55, 0.04][k], 5, true, () => aux);
+  };
+  for (const sx of [-1, 1]) {
+    for (let z = 12; z <= 42; z += 3.1) { const k = prof(SK, z), big = z > 38; cone(sx * k[0] * 0.78, k[2] - k[1] * 0.5, z, sx * 0.15, -1, 0.1, big ? 6 : 2.2 + 2.5 * max(1 - abs(z - 30) / 20, 0), big ? 0.7 : 0.45, 0.55); }
+    for (let z = 8; z <= 38; z += 3.4) { const j = prof(JW, z); cone(sx * j[0] * 0.72, jawY(z) + j[1] * 0.55, z, sx * 0.1, 1, 0.1, z > 33 ? 5 : 2 + 2 * max(1 - abs(z - 24) / 18, 0), 0.42, 0.8); }
+    for (let z = 2; z <= 26; z += 5.5) { const k = prof(SK, z); cone(sx * k[0], k[2], z, sx * 0.8, 0.5, -0.6, 3 + 3 * rnd(), 0.9, -0.9); }
+    // horn: a long curve sweeping back from the brow
+    m.tube([[sx * 4.5, 7.5, 7], [sx * 8, 12, 0], [sx * 12.5, 15.5, -12], [sx * 15, 15, -26], [sx * 14, 11, -38]], (k) => [2.2, 1.8, 1.2, 0.7, 0.05][k], 8, true, () => -0.9);
+    // eye
+    const c = [sx * 7.7, 2.6, 15.5], e = [];
+    for (let a = 0; a <= 8; a++) { const row = []; for (let b = 0; b < 12; b++) { const th = a / 8 * PI, ph = b / 12 * TAU; row.push(m.v(c[0] + 1.9 * sin(th) * cos(ph), c[1] + 1.9 * cos(th), c[2] + 1.9 * sin(th) * sin(ph), -0.5)); } e.push(row); }
+    for (let a = 0; a < 8; a++) for (let b = 0; b < 12; b++) m.quad(e[a][b], e[a][(b + 1) % 12], e[a + 1][(b + 1) % 12], e[a + 1][b]);
+    // barbel under the chin, with a glowing lure at its tip
+    m.tube([[sx * 3, -9.5, 34], [sx * 4.5, -14, 28], [sx * 6, -20, 18], [sx * 5, -26, 6], [sx * 3.5, -31, -6]], (k) => [0.55, 0.45, 0.35, 0.28, 0.5][k], 5, true, (k) => 0.9 + 0.1 * k / 4);
+  }
+  for (let z = -2; z <= 30; z += 4) { const k = prof(SK, z); cone(0, k[2] + k[1] * 0.95, z, 0, 1, -0.5, 2.5 + 1.5 * sin(z * 0.4), 1.1, -0.9); } // crest
+  return m;
+}
 function meshFish() {
   const m = new Mesh();
   const X = [0.5, 0.3, 0.05, -0.22, -0.34], H = [0.01, 0.13, 0.17, 0.09, 0.035], Wd = [0.01, 0.05, 0.065, 0.03, 0.012], rings = [];

@@ -8,7 +8,7 @@
   const LOGN = 1 << 16, logFrame = new Float32Array(LOGN), logGpu = new Float32Array(LOGN);
   let flying = false, bench = false, last = 0, nFrame = 0, nGpu = 0;
   // console handle: dev.ui(false) closes the menu without pointer lock, dev.lookAt(x, y, z, targetX, targetY, targetZ), dev.fire() shoots a torpedo, dev.solidAt(x, y, z) tests for rock, dev.F is the frame state
-  window.dev = { ui, lookAt, F, fire, solidAt, torpHit, FI, SCHL, hurt, crumble, RK, CP, damage, blast };
+  window.dev = { ui, lookAt, F, fire, solidAt, torpHit, FI, SCHL, hurt, crumble, RK, CP, damage, blast, LVI, RC, levHit };
   const stop = () => { flying = bench = false; dynT = 0; };
   const report = () => {
     const st = (a, n) => { const s = Array.from(a.subarray(0, n)).sort((x, y) => x - y); let sum = 0; for (const v of s) sum += v; return { n, avg: sum / n, p99: s[min(n - 1, floor(n * 0.99))], max: s[n - 1] }; };

@@ -33,7 +33,7 @@ Nothing to install, and it works offline. It needs a browser with **WebGPU**. If
 
 ## The map
 
-The coral reef is a circle of about 300 m with a wall around it. On its east side the seabed falls away into **open sea**: a strip of deep water without a floor, home to schools of fish, jellyfish and the biggest mantas and krakens. The edges of the world are invisible, so you simply stop swimming. The **minimap** in the top left corner shows the terrain, you (the arrow), the mantas (violet) and krakens (pink, orange when angry) and your torpedoes.
+The coral reef is a circle of about 300 m with a wall around it. On its east side the seabed falls away into **open sea**: a strip of deep water without a floor, home to schools of fish, jellyfish and the biggest mantas and krakens. The edges of the world are invisible, so you simply stop swimming. Down in the open sea the water is 240 m deep, and the floor, far below, is a dark ooze lit by glowing specks of bioluminescent life. Swim down there and you may meet the **Leviathan**: a 300 m sea serpent with armoured scales, horns and a mouth full of teeth. It patrols the deep. Come within about 120 m and it attacks, and its bite takes 70 health. Torpedoes hurt it (800 health, 25 a hit), but it keeps attacking for 20 s after each hit. The **minimap** in the top left corner shows the terrain, you (the arrow), the mantas (violet) and krakens (pink, orange when angry) and your torpedoes.
 
 ## Controls
 

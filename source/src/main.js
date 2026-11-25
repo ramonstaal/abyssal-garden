@@ -112,6 +112,11 @@ const ADD = { color: { srcFactor: 'one', dstFactor: 'one' }, alpha: { srcFactor:
 const pSnow = scenePipe(mSpr, 'vsSnow', 'fsSnow', [ibSnow], { strip: true, blend: ADD });
 const pFlash = scenePipe(mSpr, 'vsFlash', 'fsFlash', [ibBub], { strip: true, blend: ADD });
 const pDebris = scenePipe(mSpr, 'vsDebris', 'fsDebris', [ibBub], { strip: true, blend: { color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } } });
+// the leviathan (body: dynamic vertices, head: a mesh with instance data like the mantas) and the abyssal floor
+const vbLev = { arrayStride: 32, attributes: [A(0, 0, 'float32x4'), A(1, 16, 'float32x4')] };
+const mLev = mod(W_LEV);
+const pLevB = scenePipe(mLev, 'vsLB', 'fsLB', [vbLev]), pLevH = scenePipe(mLev, 'vsLH', 'fsLH', [vbSolid, ibCrea]);
+const pFloor = scenePipe(mSurf, 'vsF', 'fsF', [], { strip: true });
 const pTrail = scenePipe(mSpr, 'vsTrail', 'fsBub', [ibBub], { strip: true, blend: { color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } } });
 const pGl = scenePipe(mLeaf, 'vsGl', 'fsGl', [ibBub], { strip: true, blend: ADD, constants: { ROWS: 7 } });
 const pSolidSh = shadowPipe(mSolid, 'vs', [vbSolid, ibSolid]), pTerrSh = shadowPipe(mSolid, 'vs', [vbSolid, ibSolid], { cull: 'front' });
@@ -222,6 +227,11 @@ function drawMap() {
     c.fillStyle = CP[o + C_AN] > 0.5 ? '#ff5a3c' : k >= NM ? '#ff8aa0' : '#b9a0ff';
     c.beginPath(); c.arc(mmX(CP[o]), mmZ(CP[o + 2]), k >= NM ? 3.2 : 2, 0, 6.283); c.fill();
   }
+  if (CP[LVI * 16 + C_ALIVE]) { // the leviathan: its body as a line, its head a ring
+    c.strokeStyle = CP[LVI * 16 + C_AN] > 0.5 ? '#ff3d33' : '#b3202a'; c.lineWidth = 2; c.beginPath(); c.moveTo(mmX(RC[0]), mmZ(RC[2]));
+    for (let k = 10; k < LNR; k += 10) c.lineTo(mmX(RC[k * 3]), mmZ(RC[k * 3 + 2]));
+    c.stroke(); c.beginPath(); c.arc(mmX(RC[0]), mmZ(RC[2]), 4, 0, 6.283); c.stroke();
+  }
   c.fillStyle = '#fff';
   for (let k = 0; k < TMAX; k++) if (TL[k]) c.fillRect(mmX(TP[k * 10]) - 1, mmZ(TP[k * 10 + 2]) - 1, 2, 2);
   const px = mmX(F[CX]), pz = mmZ(F[CZ]), a = atan2(F[FZ], F[FX]); // you: an arrow along your heading
@@ -309,14 +319,14 @@ D = Wd.gy = T.smp = null; // with gy goes the generator's working memory (about 
 
 await say('Building set pieces…', 0.94, 1200);
 // mesh ids: 0-3 boulders, 4-6 sponges, 7-8 coral, 9 tube sponge, 10 whale fluke, 11 ship, 12 manta, 13 fish,
-// 14-20 rock chunks + pebbles, 21-22 coral LOD, 23-25 far LOD of the large rock chunks, 26 kraken, 27 jellyfish, 28 torpedo
+// 14-20 rock chunks + pebbles, 21-22 coral LOD, 23-25 far LOD of the large rock chunks, 26 kraken, 27 jellyfish, 28 torpedo, 29 leviathan head
 const meshes = [meshChunk(1, 3), meshChunk(7, 3), meshChunk(13, 3), meshChunk(22, 3),
   meshLathe([[0, 0, 0.5], [0.34, 0, 0.6], [0.5, 0.2, 0.85], [0.6, 0.6, 1], [0.55, 0.95, 1], [0.47, 1.08, 1], [0.38, 1.1, 0.9], [0.3, 1.0, 0.45], [0.26, 0.6, 0.15], [0, 0.35, 0.05]], 18, 0.3, 9),
   meshLathe([[0, 0, 0.5], [0.2, 0, 0.6], [0.26, 0.5, 0.85], [0.4, 1.25, 1], [0.4, 1.42, 1], [0.33, 1.48, 0.9], [0.26, 1.38, 0.4], [0.18, 0.8, 0.12], [0, 0.5, 0.05]], 16, 0.35, 8),
   meshLathe([[0, 0, 0.5], [0.5, 0, 0.7], [0.72, 0.18, 1], [0.74, 0.38, 1], [0.62, 0.5, 0.9], [0.48, 0.42, 0.45], [0.4, 0.2, 0.15], [0, 0.14, 0.06]], 18, 0.25, 10),
   meshCoral(0), meshCoral(1), meshTubes()].map((m) => m.build());
 meshes.push(meshFluke(), meshShip().build(), meshManta().build(), meshFish().build(),
-  meshChunk(3).build(), meshChunk(11).build(), meshChunk(29).build(), meshChunk(5, 3).build(), meshChunk(17, 3).build(), meshChunk(41, 3).build(), meshChunk(9, 1).build(), meshCoral(0, 1).build(), meshCoral(1, 1).build(), meshChunk(5, 2, 1).build(), meshChunk(17, 2, 1).build(), meshChunk(41, 2, 1).build(), meshKraken().build(), meshJelly().build(), meshTorpedo().build());
+  meshChunk(3).build(), meshChunk(11).build(), meshChunk(29).build(), meshChunk(5, 3).build(), meshChunk(17, 3).build(), meshChunk(41, 3).build(), meshChunk(9, 1).build(), meshCoral(0, 1).build(), meshCoral(1, 1).build(), meshChunk(5, 2, 1).build(), meshChunk(17, 2, 1).build(), meshChunk(41, 2, 1).build(), meshKraken().build(), meshJelly().build(), meshTorpedo().build(), meshLeviathan().build());
 let nV = 0, nI = 0;
 for (const m of meshes) { m.v0 = nV; m.i0 = nI; nV += m.nv; nI += m.ib.length; }
 const allV = new Uint8Array(nV * 16), allI = new Uint32Array(nI);
@@ -331,7 +341,7 @@ const ibBig = buf(new Uint8Array(Wd.big.buf), BU.VERTEX), ibBigF = buf(new Uint8
 const ibFish = buf(Wd.fish, BU.VERTEX), ibBubbles = buf(Wd.bubbles, BU.VERTEX), ibSnowB = buf(Wd.snow, BU.VERTEX);
 const ibGl = buf(Wd.glints, BU.VERTEX), nGl = Wd.glints.length / 8;
 const nFish = Wd.fish.length / 12, nManta = Wd.mantas.length / 8, nBub = Wd.bubbles.length / 8, nSnow = Wd.snow.length / 4;
-const MANTA = meshes[12], FISH = meshes[13], KRAKEN = meshes[26], JELLY = meshes[27], ibJelly = buf(Wd.jelly, BU.VERTEX), nJelly = Wd.jelly.length / 8, TORP = meshes[28];
+const MANTA = meshes[12], FISH = meshes[13], KRAKEN = meshes[26], JELLY = meshes[27], ibJelly = buf(Wd.jelly, BU.VERTEX), nJelly = Wd.jelly.length / 8, TORP = meshes[28], LEVH = meshes[29];
 // Sphere colliders in an 8 m grid over x, z (mkGrid: cell starts and sphere indices). SPH: the large rocks the camera can't enter
 // (the terrain itself is in the collision field below); HIT: more things (small rocks, sponges, corals, the ship, the fluke) only torpedoes burst on.
 const gcell = (x, z) => clamp(floor((x + 192) / 8), 0, 47) + 48 * clamp(floor((z + 192) / 8), 0, 47);
@@ -499,7 +509,7 @@ function render() {
   const zx = cx - PURPLE[0], zz = cz - PURPLE[1]; let zt = (44 - sqrt(zx * zx + zz * zz)) / 18; zt = zt < 0 ? 0 : zt > 1 ? 1 : zt;
   m[51] = zt * zt * (3 - 2 * zt);
   let ek = (-cy - 8) / 26; ek = ek < 0 ? 0 : ek > 1 ? 1 : ek;
-  m[56] = EXPO * (0.6 + 0.4 * ek); m[57] = RAYS; m[58] = det;
+  m[56] = EXPO * (0.6 + 0.4 * ek) * (1 + 1.5 * clamp((-cy - 60) / 160, 0, 1)); m[57] = RAYS * (1 - 0.9 * clamp((-cy - 50) / 100, 0, 1)); // no sunlight shafts down in the dark m[58] = det; m[59] = CP[LVI * 16 + C_AN];
   Q.writeBuffer(ubo, 0, UB);
   WT[0] = F[TIME]; Q.writeBuffer(uboW, 0, WT);
 
@@ -531,14 +541,17 @@ function render() {
   }
   r.setPipeline(pManta); r.setVertexBuffer(1, bufCrea); r.drawIndexed(MANTA.ib.length, nManta, MANTA.i0, MANTA.v0, 0);
   r.setPipeline(pKraken); r.setVertexBuffer(1, bufCrea); r.drawIndexed(KRAKEN.ib.length, NK, KRAKEN.i0, KRAKEN.v0, nManta);
+  if (CP[LVI * 16 + C_ALIVE]) { r.setPipeline(pLevH); r.setVertexBuffer(1, bufCrea); r.drawIndexed(LEVH.ib.length, 1, LEVH.i0, LEVH.v0, NC); }
   if (nTorp) { r.setPipeline(pTorp); r.setVertexBuffer(1, ibTorp); r.drawIndexed(TORP.ib.length, nTorp, TORP.i0, TORP.v0, 0); }
   r.setPipeline(pJelly); r.setVertexBuffer(1, ibJelly); r.drawIndexed(JELLY.ib.length, nJelly, JELLY.i0, JELLY.v0, 0);
   r.setPipeline(pFish); r.setVertexBuffer(1, ibFish); r.drawIndexed(FISH.ib.length, nFish, FISH.i0, FISH.v0, 0);
+  if (CP[LVI * 16 + C_ALIVE]) { r.setPipeline(pLevB); r.setVertexBuffer(0, vbLevB); r.setIndexBuffer(ibLevB, 'uint32'); r.drawIndexed(LBI.length); }
   // kelp and plants: 9-row blades up close, 5 rows mid-range, a decimated set far away
   r.setPipeline(pLeaf); r.setVertexBuffer(0, ibBig); drawCells(r, Wd.big.start, Wd.big.lo, Wd.big.hi, 5, false, 18, 0, 24);
   r.setPipeline(pLeaf5); drawCells(r, Wd.big.start, Wd.big.lo, Wd.big.hi, 5, false, 10, 24, 58);
   r.setPipeline(pLeafF); r.setVertexBuffer(0, ibBigF); drawCells(r, Wd.bigF.start, Wd.bigF.lo, Wd.bigF.hi, 5, false, 6, 58, 150);
   r.setPipeline(pLeafS); r.setVertexBuffer(0, ibSmall); drawCells(r, Wd.small.start, Wd.small.lo, Wd.small.hi, 1.5, false, 6, 0, 70);
+  r.setPipeline(pFloor); r.draw(4);
   r.setPipeline(pSurf); r.draw(4);
   r.setPipeline(pBack); r.draw(4);
   r.setPipeline(pBub); r.setVertexBuffer(0, ibBubbles); r.draw(4, nBub);
@@ -593,6 +606,7 @@ let hitC = -1; // the creature (0-5 manta, 6 kraken) the last dynHit found
 function dynHit(px, py, pz) {
   const t = F[TIME]; hitC = -1;
   for (let c = 0; c < NC; c++) if (CP[c * 16 + C_ALIVE] && cHit(c, px, py, pz, 0.3)) { hitC = c; return true; }
+  if (CP[LVI * 16 + C_ALIVE] && levHit(px, py, pz, 0.3)) { hitC = LVI; return true; }
   for (let i = 0; i < JL.length; i += 8) { // jellyfish: the bell
     if (JD[i / 8]) continue;
     const ta = t * JL[i + 5] + JL[i + 4], R = JL[i + 3], sz = JL[i + 6], r = sz * 0.95 + 0.3;
@@ -677,7 +691,7 @@ function hurt(d) {
   $('dm').animate({ opacity: [min(0.85, 0.2 + d / 30), 0] }, { duration: 700, easing: 'ease-out' });
   if (F[HP] > 0) return;
   F[HP] = 100; showHP(); TL.fill(0);
-  for (let c = 0; c < NC; c++) CP[c * 16 + C_UNTIL] = 0;
+  for (let c = 0; c <= NC; c++) CP[c * 16 + C_UNTIL] = 0;
   F[VX] = F[VY] = F[VZ] = 0; lkx = lky = l2x = l2y = 0; lookAt(...POSES[0]);
   $('dd').animate({ opacity: [1, 1, 0] }, { duration: 2400 });
 }
@@ -753,10 +767,10 @@ function blast(x, y, z, r) {
 // bank). Calm, they follow their orbit exactly as the shader used to. Health is by size (a manta 12 per metre of size, the kraken 40) and
 // a torpedo takes 25. A hit makes one angry for 20 s: it swims at you much faster and bites on contact (12 from a manta, 30 from the
 // kraken); then it swims back to its orbit and rejoins it. At 0 it blows up.
-const NM = MT.length / 8, NK = KR.length / 8, NC = NM + NK, TDMG = 25, CP = new Float64Array(NC * 16), CRI = new Float32Array(NC * 12), OR = new Float64Array(6);
-const bufCrea = device.createBuffer({ size: NC * 48, usage: BU.VERTEX | BU.COPY_DST });
+const NM = MT.length / 8, NK = KR.length / 8, NC = NM + NK, TDMG = 25, CP = new Float64Array((NC + 1) * 16), CRI = new Float32Array((NC + 1) * 12), OR = new Float64Array(6);
+const bufCrea = device.createBuffer({ size: (NC + 1) * 48, usage: BU.VERTEX | BU.COPY_DST });
 // CP per creature: 0-2 position, 3-5 direction, 6 animation phase, 7 anger, 8 health, 9 maximum, 10 size, 11 angry until, 12 next bite, 13 seed, 14 kraken, 15 alive
-const C_PH = 6, C_AN = 7, C_HP = 8, C_MAX = 9, C_SZ = 10, C_UNTIL = 11, C_CD = 12, C_SEED = 13, C_KR = 14, C_ALIVE = 15;
+const C_JAW = 13, C_PH = 6, C_AN = 7, C_HP = 8, C_MAX = 9, C_SZ = 10, C_UNTIL = 11, C_CD = 12, C_SEED = 13, C_KR = 14, C_ALIVE = 15;
 const KZ = [1.8, 0.3, -1.5, -3.5, -6], KRAD = [0.8, 0.7, 0.6, 0.45, 0.3];
 // the orbit of creature c at time t: position and direction in OR
 function orbit(c, t) {
@@ -811,6 +825,149 @@ function creatures(dt) {
   Q.writeBuffer(bufCrea, 0, CRI);
 }
 creatures(0);
+// ---------------------------------------------------------------- the leviathan
+// A 300 m sea serpent in the deep of the open sea: a head mesh and a body rebuilt every frame, that follows the trail of the head
+// (its positions, one every 2 m) with a wave running down it. Calm, the head patrols a slow loop 165 m down. Come within 120 m and it
+// attacks: it swims at you, opens its jaws and bites for 70. Torpedoes hurt it (800 health, 25 a hit); it keeps up the attack for 20 s
+// after a hit, and for as long as you stay within 220 m of it.
+const LVI = NC, LVL = 300, LNR = 200, LSD = 24, LHN = 180, LHS = 2, LDS = LVL / (LNR - 1), LNS = floor((LNR - 13) / 3) + 1;
+const LNV = LNR * (LSD + 1) + LNS * 3 + 11;
+const LH = new Float64Array(LHN * 3), BP = new Float64Array(LNR * 3), RC = new Float64Array(LNR * 3), RT = new Float64Array(LNR * 3), RU = new Float64Array(LNR * 3), RS = new Float64Array(LNR * 3);
+const LCS = new Float64Array(LSD + 1), LSN = new Float64Array(LSD + 1), LBV = new Float32Array(LNV * 8);
+for (let j = 0; j <= LSD; j++) { LCS[j] = cos(j / LSD * TAU); LSN[j] = sin(j / LSD * TAU); }
+const LIDX = [];
+for (let k = 0; k < LNR - 1; k++) for (let j = 0; j < LSD; j++) { const a = k * (LSD + 1) + j, b = a + 1, c = a + LSD + 1, d = c + 1; LIDX.push(a, c, d, a, d, b); }
+{ let v = LNR * (LSD + 1); for (let m = 0; m < LNS + 2; m++, v += 3) LIDX.push(v, v + 1, v + 2); LIDX.push(v, v + 1, v + 2, v, v + 2, v + 4, v + 4, v + 2, v + 3); }
+const LBI = new Uint32Array(LIDX);
+const vbLevB = device.createBuffer({ size: LNV * 32, usage: BU.VERTEX | BU.COPY_DST }), ibLevB = buf(LBI, BU.INDEX);
+let LHI = 0, levAngry = false, LN = 0; // LN: next float to write in LBV
+const lput = (x, y, z, s, nx, ny, nz, v) => { LBV[LN] = x; LBV[LN + 1] = y; LBV[LN + 2] = z; LBV[LN + 3] = s; LBV[LN + 4] = nx; LBV[LN + 5] = ny; LBV[LN + 6] = nz; LBV[LN + 7] = v; LN += 8; };
+const LZ = [6, 18, 30, 40], LRD = [8, 7, 5, 3];
+// radius of the body s metres behind the head
+const levR = (s) => min(8.5 + 70 * s / LVL, 15 * (1 - pow(s / LVL, 2.2)) + 1.2);
+// the patrol loop at time t: position and direction in OR
+function levPatrol(t) {
+  const a = 0.025 * t, tx = -110 * sin(a), ty = 12.5 * cos(0.5 * a), tz = 80 * cos(a), l = hypot(tx, ty, tz);
+  OR[0] = 300 + 110 * cos(a); OR[1] = -165 + 25 * sin(0.5 * a); OR[2] = 80 * sin(a); OR[3] = tx / l; OR[4] = ty / l; OR[5] = tz / l;
+}
+{
+  const o = LVI * 16; CP[o + C_SZ] = 1; CP[o + C_MAX] = CP[o + C_HP] = 800; CP[o + C_ALIVE] = 1; CP[o + C_KR] = 2;
+  levPatrol(10); for (let j = 0; j < 6; j++) CP[o + j] = OR[j];
+  for (let i = 0; i < LHN; i++) { const idx = ((LHI - i + LHN) % LHN) * 3; LH[idx] = OR[0] - OR[3] * i * LHS; LH[idx + 1] = OR[1] - OR[4] * i * LHS; LH[idx + 2] = OR[2] - OR[5] * i * LHS; }
+}
+// the body for the head's current pose: ring centres along the trail, a wave down it, frames carried along, then the vertices
+function levBody(t) {
+  const o = LVI * 16, hx = CP[o], hy = CP[o + 1], hz = CP[o + 2];
+  let h0 = LHI * 3, d0 = hypot(hx - LH[h0], hy - LH[h0 + 1], hz - LH[h0 + 2]);
+  if (d0 >= LHS) { LHI = (LHI + 1) % LHN; h0 = LHI * 3; LH[h0] = hx; LH[h0 + 1] = hy; LH[h0 + 2] = hz; d0 = 0; }
+  for (let k = 0; k < LNR; k++) { // ring k, k * LDS metres back along the trail
+    const s = k * LDS; let x, y, z;
+    if (s <= d0) { const f = d0 > 1e-6 ? s / d0 : 0; x = hx + (LH[h0] - hx) * f; y = hy + (LH[h0 + 1] - hy) * f; z = hz + (LH[h0 + 2] - hz) * f; }
+    else {
+      const qq = (s - d0) / LHS; let i = qq | 0, f = qq - i; if (i > LHN - 2) { i = LHN - 2; f = 1; }
+      const a = ((LHI - i + LHN) % LHN) * 3, b = ((LHI - i - 1 + LHN) % LHN) * 3;
+      x = LH[a] + (LH[b] - LH[a]) * f; y = LH[a + 1] + (LH[b + 1] - LH[a + 1]) * f; z = LH[a + 2] + (LH[b + 2] - LH[a + 2]) * f;
+    }
+    BP[k * 3] = x; BP[k * 3 + 1] = y; BP[k * 3 + 2] = z;
+  }
+  for (let k = 0; k < LNR; k++) { // the wave: sideways, and a little up and down, growing from the neck
+    const a = max(k - 1, 0) * 3, b = min(k + 1, LNR - 1) * 3;
+    const tx = BP[a] - BP[b], tz = BP[a + 2] - BP[b + 2], hl = hypot(tx, tz) || 1, s = k * LDS, amp = 4.5 * sstep(0, 70, s), ph = s * TAU / 85 - 0.9 * t;
+    const w1 = amp * sin(ph);
+    RC[k * 3] = BP[k * 3] + tz / hl * w1; RC[k * 3 + 1] = BP[k * 3 + 1] + amp * 0.4 * sin(ph + 1.2); RC[k * 3 + 2] = BP[k * 3 + 2] - tx / hl * w1;
+  }
+  for (let k = 0; k < LNR; k++) {
+    const a = max(k - 1, 0) * 3, b = min(k + 1, LNR - 1) * 3;
+    let tx = RC[a] - RC[b], ty = RC[a + 1] - RC[b + 1], tz = RC[a + 2] - RC[b + 2]; const l = hypot(tx, ty, tz) || 1;
+    RT[k * 3] = tx / l; RT[k * 3 + 1] = ty / l; RT[k * 3 + 2] = tz / l;
+  }
+  RT[0] = CP[o + 3]; RT[1] = CP[o + 4]; RT[2] = CP[o + 5];
+  // frames: the first like the head's (S = normalize(cross(up, T)), U = cross(T, S)), then carried along the body
+  let ux, uy, uz;
+  { const tx = RT[0], ty = RT[1], tz = RT[2]; let ax = 0, ay = 1, az = 0; if (abs(ty) > 0.99) { ax = 1; ay = 0; }
+    let sx = ay * tz - az * ty, sy = az * tx - ax * tz, sz = ax * ty - ay * tx; const sl = hypot(sx, sy, sz) || 1; sx /= sl; sy /= sl; sz /= sl;
+    ux = ty * sz - tz * sy; uy = tz * sx - tx * sz; uz = tx * sy - ty * sx; }
+  let n = 0;
+  for (let k = 0; k < LNR; k++) {
+    const tx = RT[k * 3], ty = RT[k * 3 + 1], tz = RT[k * 3 + 2];
+    if (k) { const d = ux * tx + uy * ty + uz * tz; ux -= tx * d; uy -= ty * d; uz -= tz * d; const l = hypot(ux, uy, uz) || 1; ux /= l; uy /= l; uz /= l; }
+    const sx = uy * tz - uz * ty, sy = uz * tx - ux * tz, sz = ux * ty - uy * tx; // S = cross(U, T)
+    RU[k * 3] = ux; RU[k * 3 + 1] = uy; RU[k * 3 + 2] = uz; RS[k * 3] = sx; RS[k * 3 + 1] = sy; RS[k * 3 + 2] = sz;
+    const s = k * LDS, r = levR(s), cx = RC[k * 3], cy = RC[k * 3 + 1], cz = RC[k * 3 + 2];
+    for (let j = 0; j <= LSD; j++, n += 8) {
+      const nx = LCS[j] * ux + LSN[j] * sx, ny = LCS[j] * uy + LSN[j] * sy, nz = LCS[j] * uz + LSN[j] * sz;
+      LBV[n] = cx + nx * r; LBV[n + 1] = cy + ny * r; LBV[n + 2] = cz + nz * r; LBV[n + 3] = s; LBV[n + 4] = nx; LBV[n + 5] = ny; LBV[n + 6] = nz; LBV[n + 7] = j / LSD;
+    }
+  }
+  LN = n;
+  for (let m = 0; m < LNS; m++) { // spines down the back
+    const k = 3 + 3 * m, s = k * LDS, r = levR(s), h = 1.5 + 0.3 * r * (0.7 + 0.3 * sin(m * 1.7)), w = 0.2 * r + 0.3, i = k * 3;
+    const cx = RC[i], cy = RC[i + 1], cz = RC[i + 2], ux = RU[i], uy = RU[i + 1], uz = RU[i + 2], sx = RS[i], sy = RS[i + 1], sz = RS[i + 2], tx = RT[i], ty = RT[i + 1], tz = RT[i + 2];
+    lput(cx + ux * r * 0.97 - sx * w, cy + uy * r * 0.97 - sy * w, cz + uz * r * 0.97 - sz * w, s, sx, sy, sz, 0);
+    lput(cx + ux * r * 0.97 + sx * w, cy + uy * r * 0.97 + sy * w, cz + uz * r * 0.97 + sz * w, s, sx, sy, sz, 0);
+    lput(cx + ux * (r + h) - tx * h * 0.7, cy + uy * (r + h) - ty * h * 0.7, cz + uz * (r + h) - tz * h * 0.7, s, sx, sy, sz, 0);
+  }
+  for (let si = 0; si < 2; si++) { // pectoral fins
+    const sd = si * 2 - 1;
+    const a = 12 * 3, b = 19 * 3, c = 15 * 3, ra = levR(12 * LDS), rb = levR(19 * LDS), rc = levR(15 * LDS), fl = 4 * sin(t * 0.9 + sd * 1.5);
+    lput(RC[a] + RS[a] * sd * ra * 0.95 - RU[a] * 0.3 * ra, RC[a + 1] + RS[a + 1] * sd * ra * 0.95 - RU[a + 1] * 0.3 * ra, RC[a + 2] + RS[a + 2] * sd * ra * 0.95 - RU[a + 2] * 0.3 * ra, 12 * LDS, RU[c], RU[c + 1], RU[c + 2], 0.25);
+    lput(RC[b] + RS[b] * sd * rb * 0.95 - RU[b] * 0.3 * rb, RC[b + 1] + RS[b + 1] * sd * rb * 0.95 - RU[b + 1] * 0.3 * rb, RC[b + 2] + RS[b + 2] * sd * rb * 0.95 - RU[b + 2] * 0.3 * rb, 19 * LDS, RU[c], RU[c + 1], RU[c + 2], 0.25);
+    lput(RC[c] + RS[c] * sd * (rc + 22) - RT[c] * 8 + RU[c] * fl, RC[c + 1] + RS[c + 1] * sd * (rc + 22) - RT[c + 1] * 8 + RU[c + 1] * fl, RC[c + 2] + RS[c + 2] * sd * (rc + 22) - RT[c + 2] * 8 + RU[c + 2] * fl, 15 * LDS, RU[c], RU[c + 1], RU[c + 2], 0.25);
+  }
+  { // tail fluke
+    const i = (LNR - 6) * 3, s = (LNR - 6) * LDS, w = 2 * sin(t * 1.1), cx = RC[i], cy = RC[i + 1], cz = RC[i + 2], ux = RU[i], uy = RU[i + 1], uz = RU[i + 2], sx = RS[i], sy = RS[i + 1], sz = RS[i + 2], tx = RT[i], ty = RT[i + 1], tz = RT[i + 2];
+    lput(cx - sx * 1.2, cy - sy * 1.2, cz - sz * 1.2, s, ux, uy, uz, 0);
+    lput(cx - sx * 20 - tx * 14 + ux * w, cy - sy * 20 - ty * 14 + uy * w, cz - sz * 20 - tz * 14 + uz * w, s, ux, uy, uz, 0);
+    lput(cx - tx * 5, cy - ty * 5, cz - tz * 5, s, ux, uy, uz, 0);
+    lput(cx + sx * 20 - tx * 14 + ux * w, cy + sy * 20 - ty * 14 + uy * w, cz + sz * 20 - tz * 14 + uz * w, s, ux, uy, uz, 0);
+    lput(cx + sx * 1.2, cy + sy * 1.2, cz + sz * 1.2, s, ux, uy, uz, 0);
+  }
+  Q.writeBuffer(vbLevB, 0, LBV);
+}
+// the head patrols or attacks, the jaw opens, the body follows
+function leviathan(dt) {
+  const o = LVI * 16, q = LVI * 12, t = F[TIME];
+  if (!CP[o + C_ALIVE]) { CRI[q + 3] = 0; return; }
+  let px = CP[o], py = CP[o + 1], pz = CP[o + 2];
+  const dx = F[CX] - px, dy = F[CY] - py, dz = F[CZ] - pz, dist = sqrt(dx * dx + dy * dy + dz * dz);
+  const mx = F[CX] - (px + CP[o + 3] * 30), my = F[CY] - (py + CP[o + 4] * 30), mz = F[CZ] - (pz + CP[o + 5] * 30), dm = sqrt(mx * mx + my * my + mz * mz); // to the mouth
+  if (dist < 120 || (t < CP[o + C_UNTIL] && dist < 220)) CP[o + C_UNTIL] = max(CP[o + C_UNTIL], t + 12);
+  const angry = t < CP[o + C_UNTIL];
+  if (angry && !levAngry && SFX) SFX(2, 0);
+  levAngry = angry;
+  CP[o + C_AN] += ((angry ? 1 : 0) - CP[o + C_AN]) * (1 - exp(-dt * 1.5));
+  CP[o + C_PH] += dt * (1 + CP[o + C_AN]);
+  let tx, ty, tz;
+  if (angry) { tx = F[CX]; ty = F[CY]; tz = F[CZ]; } else { levPatrol(t + 18); tx = OR[0]; ty = OR[1]; tz = OR[2]; }
+  const ex = tx - px, ey = ty - py, ez = tz - pz, l = sqrt(ex * ex + ey * ey + ez * ez) || 1, k = min(1, (angry ? 0.9 : 0.35) * dt);
+  let nx = CP[o + 3] + (ex / l - CP[o + 3]) * k, ny = CP[o + 4] + (ey / l - CP[o + 4]) * k, nz = CP[o + 5] + (ez / l - CP[o + 5]) * k;
+  const nl = sqrt(nx * nx + ny * ny + nz * nz) || 1; nx /= nl; ny /= nl; nz /= nl;
+  const sp = angry ? (dm > 60 ? 34 : 22) : 8;
+  CP[o + 3] = nx; CP[o + 4] = ny; CP[o + 5] = nz;
+  px = clamp(px + nx * sp * dt, 150, 415); py = clamp(py + ny * sp * dt, -232, -14); pz = clamp(pz + nz * sp * dt, -145, 145);
+  CP[o] = px; CP[o + 1] = py; CP[o + 2] = pz;
+  const open = angry && dm < 80 ? 0.65 : 0.12 + 0.05 * sin(t * 0.8);
+  CP[o + C_JAW] += (open - CP[o + C_JAW]) * (1 - exp(-dt * (open > CP[o + C_JAW] ? 4 : 10)));
+  if (angry && t > CP[o + C_CD] && dm < 24) { hurt(70); CP[o + C_CD] = t + 4; CP[o + C_JAW] = -0.1; } // the bite
+  levBody(t);
+  CRI[q] = px; CRI[q + 1] = py; CRI[q + 2] = pz; CRI[q + 3] = 1; CRI[q + 4] = nx; CRI[q + 5] = ny; CRI[q + 6] = nz; CRI[q + 7] = CP[o + C_JAW];
+  CRI[q + 8] = CP[o + C_AN]; CRI[q + 9] = CP[o + C_PH]; CRI[q + 10] = 0; CRI[q + 11] = 0;
+}
+// is the point within pad of the leviathan: spheres along the head, then every 6th ring of the body
+function levHit(px, py, pz, pad) {
+  const o = LVI * 16;
+  for (let k = 0; k < 4; k++) {
+    const dx = px - (CP[o] + CP[o + 3] * LZ[k]), dy = py - (CP[o + 1] + CP[o + 4] * LZ[k]), dz = pz - (CP[o + 2] + CP[o + 5] * LZ[k]), r = LRD[k] + pad;
+    if (dx * dx + dy * dy + dz * dz < r * r) return true;
+  }
+  for (let k = 0; k < LNR; k += 6) {
+    const dx = px - RC[k * 3], dy = py - RC[k * 3 + 1], dz = pz - RC[k * 3 + 2], r = levR(k * LDS) * 0.95 + pad;
+    if (dx * dx + dy * dy + dz * dz < r * r) return true;
+  }
+  return false;
+}
+leviathan(0); creatures(0);
+
 // the health of the creature last hit, under the player's bar for 4 s
 const ebEl = $('eb'), ebBar = ebEl.firstChild; let ebT = 0;
 function damage(c, d) {
@@ -819,6 +976,10 @@ function damage(c, d) {
   ebBar.style.transform = `scaleX(${max(CP[o + C_HP], 0) / CP[o + C_MAX]})`; ebEl.className = 'on'; clearTimeout(ebT); ebT = setTimeout(() => { ebEl.className = ''; }, 4000);
   if (CP[o + C_HP] > 0) return;
   CP[o + C_ALIVE] = 0;
+  if (c === LVI) { // the leviathan dies in a chain of blasts along its whole body
+    for (let k = 0; k < LNR; k += 12) boom(RC[k * 3], RC[k * 3 + 1], RC[k * 3 + 2], 0, 0, 0, false);
+    return;
+  }
   for (let j = 0, n = c >= NM ? 5 : 2; j < n; j++) { const k = c >= NM ? -j * 2.5 * CP[o + C_SZ] : 0; boom(CP[o] + CP[o + 3] * k, CP[o + 1] + CP[o + 4] * k, CP[o + 2] + CP[o + 5] * k, 0, 0, 0, false); }
 }
 
@@ -931,7 +1092,7 @@ function frame(now) {
     let x = F[CX] + vx * dt, y = F[CY] + vy * dt, z = F[CZ] + vz * dt;
     // invisible boundaries: the reef is a circle of 150 m, the open sea a strip from x = 125 to 420, 300 m wide
     if (x > 125) { x = x > 420 ? 420 : x; z = z > 150 ? 150 : z < -150 ? -150 : z; } else { const rad = sqrt(x * x + z * z); if (rad > 150) { x *= 150 / rad; z *= 150 / rad; } }
-    const ymin = -52 - 23 * clamp((x - 120) / 40, 0, 1); // the sea has no floor: you can go deeper there
+    const ymin = -52 - 180 * clamp((x - 125) / 60, 0, 1); // the open sea is deep: down to 232 m, the floor is at 240
     y = y < ymin ? ymin : y > -1.2 ? -1.2 : y;
     F[YAW] = yaw; F[PIT] = pitch; F[VX] = vx; F[VY] = vy; F[VZ] = vz; F[MX] = x - F[CX]; F[MY] = y - F[CY]; F[MZ] = z - F[CZ];
     collide();
@@ -939,6 +1100,7 @@ function frame(now) {
     F[IMP] = 0;
     if (F[HP] < 100 && !menu) { F[HP] = min(100, F[HP] + 2 * dt); if (floor(F[HP]) !== hpShown) showHP(); }
   }
+  leviathan(dt);
   creatures(dt);
   torp(dt);
   if ((F[MMT] -= dt) < 0 && !menu) { F[MMT] = 0.1; drawMap(); }
